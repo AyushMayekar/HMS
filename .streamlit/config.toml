@@ -1,0 +1,21 @@
+# Meridian Care — Streamlit configuration.
+# Committed to the repo so Windows and Linux checkouts render identically
+# (same theme, same toolbar, no per-machine user config involved).
+
+[theme]
+base = "light"
+primaryColor = "#0B3C5D"
+secondaryBackgroundColor = "#E6F7F5"
+backgroundColor = "#F4F7FA"
+textColor = "#0F172A"
+font = "sans serif"
+
+[server]
+headless = true
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+showErrorDetails = "type"

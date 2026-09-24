@@ -1,0 +1,343 @@
+# ============================================================
+# AI HOSPITAL MANAGEMENT SYSTEM
+# Python + uv + ML + RAG + FastAPI/Streamlit/etc.
+# ============================================================
+
+
+# ------------------------------------------------------------
+# Python
+# ------------------------------------------------------------
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python build artifacts
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Type checker caches
+.pyre/
+.pytype/
+.pyright/
+
+
+# ------------------------------------------------------------
+# Virtual environments
+# ------------------------------------------------------------
+
+.venv/
+venv/
+env/
+ENV/
+.env/
+.conda/
+conda-env/
+
+
+# ------------------------------------------------------------
+# Environment / secrets
+# ------------------------------------------------------------
+
+.env
+.env.*
+!.env.example
+
+# Local secret/config files
+*.secret
+*.secrets
+secrets/
+credentials/
+credentials.json
+
+# Certificates / private keys
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+
+# ------------------------------------------------------------
+# uv
+# ------------------------------------------------------------
+
+# DO NOT ignore uv.lock.
+# uv.lock should normally be committed to version control.
+
+# Local uv cache (if explicitly configured inside project)
+.uv/
+
+
+# ------------------------------------------------------------
+# IDE / Editors
+# ------------------------------------------------------------
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+.idea/
+*.iml
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+
+# ------------------------------------------------------------
+# Logs
+# ------------------------------------------------------------
+
+*.log
+logs/*
+!logs/.gitkeep
+
+# Application logs
+*.log.*
+*.out
+
+
+# ------------------------------------------------------------
+# Databases
+# ------------------------------------------------------------
+
+*.db
+*.sqlite
+*.sqlite3
+
+# Local database files
+database.db
+dev.db
+test.db
+
+
+# ------------------------------------------------------------
+# ML artifacts
+# ------------------------------------------------------------
+
+# Generated model artifacts
+*.joblib
+*.pkl
+*.pickle
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.bin
+
+# ML experiment outputs
+ml_training/artifacts/*
+ml_training/evaluation/output/*
+ml_training/runs/*
+ml_training/checkpoints/*
+
+# Keep directories in git
+!ml_training/artifacts/.gitkeep
+!ml_training/evaluation/.gitkeep
+
+
+# ------------------------------------------------------------
+# Jupyter
+# ------------------------------------------------------------
+
+.ipynb_checkpoints/
+
+# Jupyter temporary files
+*.ipynb_checkpoints
+
+
+# ------------------------------------------------------------
+# Data
+# ------------------------------------------------------------
+
+# Raw and processed datasets can become huge and/or contain
+# sensitive information.
+
+data/raw/*
+data/processed/*
+
+# Sample/demo data is allowed to be committed
+# unless it contains sensitive information.
+
+# Keep directory structure
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/sample/.gitkeep
+
+
+# ------------------------------------------------------------
+# RAG / Vector database artifacts
+# ------------------------------------------------------------
+
+# Generated embeddings / indexes
+vector_store/
+vectorstore/
+.vectordb/
+chroma/
+chroma_db/
+faiss_index/
+faiss_indexes/
+
+# Local RAG caches
+rag_cache/
+.cache/rag/
+
+# Generated document processing
+knowledge_base/_processed/
+knowledge_base/_cache/
+
+
+# ------------------------------------------------------------
+# Backups
+# ------------------------------------------------------------
+
+backups/*
+!backups/.gitkeep
+
+
+# ------------------------------------------------------------
+# Temporary files
+# ------------------------------------------------------------
+
+tmp/
+temp/
+.tmp/
+.cache/
+
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# OS temporary files
+*.DS_Store
+
+
+# ------------------------------------------------------------
+# Test artifacts
+# ------------------------------------------------------------
+
+.pytest_cache/
+test-results/
+coverage.xml
+junit.xml
+
+
+# ------------------------------------------------------------
+# FastAPI / application generated files
+# ------------------------------------------------------------
+
+instance/
+uploads/
+generated/
+exports/
+
+
+# ------------------------------------------------------------
+# Frontend generated files
+# ------------------------------------------------------------
+
+frontend/.streamlit/secrets.toml
+
+# Node artifacts, if frontend tooling is introduced later
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Frontend build output
+frontend/dist/
+frontend/build/
+frontend/.next/
+
+
+# ------------------------------------------------------------
+# Documentation generated output
+# ------------------------------------------------------------
+
+docs/_build/
+site/
+
+
+# ------------------------------------------------------------
+# Docker
+# ------------------------------------------------------------
+
+.docker/
+docker-data/
+docker-volumes/
+
+
+# ------------------------------------------------------------
+# Terraform / infrastructure local state
+# ------------------------------------------------------------
+
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+
+# ------------------------------------------------------------
+# Security / scanning reports
+# ------------------------------------------------------------
+
+bandit-report.json
+semgrep-report.json
+safety-report.json
+
+
+# ------------------------------------------------------------
+# Local development overrides
+# ------------------------------------------------------------
+
+docker-compose.override.yml
+docker-compose.local.yml
+
+*.local
+*.local.*
+
+
+# ------------------------------------------------------------
+# Miscellaneous
+# ------------------------------------------------------------
+
+*.orig
+*.rej
+
+# Generated documentation
+*.generated.md
+Arif/
+Ayush/
+DOCS/
+Param_v4/
+streamlit_app_latest2/
+
+# Launcher runtime artifacts
+.run/
