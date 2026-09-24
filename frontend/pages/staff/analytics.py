@@ -6,6 +6,7 @@ from __future__ import annotations
 import streamlit as st
 
 from frontend.components.navbar import page_head, breadcrumb
+from frontend.components.ui import recommendation_note
 from frontend.components.analytics import (
     department_selector,
     view_by_range_control,
@@ -181,6 +182,8 @@ def render_analytics_content() -> None:
             pass
         else:
             render_waiting_time_analytics(res.data or {})
+
+    recommendation_note("Recommendations")
 
 
 if __name__ == "__main__":

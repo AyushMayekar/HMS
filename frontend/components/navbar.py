@@ -27,6 +27,8 @@ def render_navbar(
     login_page=None,
     authenticated=None,
     role=None,
+    profile_page=None,
+    home_page=None,
 ) -> None:
     """
     Render the horizontal navigation bar.
@@ -37,6 +39,8 @@ def render_navbar(
         login_page: Streamlit Page object for login
         authenticated: Whether user is authenticated (auto-detected if None)
         role: User role (auto-detected if None)
+        profile_page: Optional page used by the user-initial menu
+        home_page: Optional page the brand mark links to
     """
     if authenticated is None:
         authenticated = is_authenticated()
@@ -49,20 +53,33 @@ def render_navbar(
         if login_page:
             links.append((login_page, "Sign In", ":material/login:"))
 
+    registry = st.session_state.get("_mc_pages", {}) or {}
+    home = home_page or registry.get("home")
+
     with st.container(key="mc_main_nav"):
         brand, nav, account = st.columns(
-            [2.0, 7.8, 1.6],
+            [0.9, 8.6, 1.1],
             vertical_alignment="center",
             gap="small",
         )
 
+        # Brand mark: icon only, always routes to home.
         with brand:
-            st.markdown(f"**:material/local_hospital: {HOSPITAL.short_name}**")
-            st.caption(HOSPITAL.tagline)
+            with st.container(key="mc_brand"):
+                if st.button(
+                    "",
+                    key="mc_brand_btn",
+                    icon=":material/local_hospital:",
+                    help=f"{HOSPITAL.short_name} — go to the home page",
+                ):
+                    if home is not None:
+                        st.switch_page(home)
+                    else:
+                        st.switch_page("pages/public/home.py")
 
         with nav:
             if links:
-                cols = st.columns(len(links), gap="small")
+                cols = st.columns(len(links), gap="medium")
                 for col, (page, label, icon) in zip(cols, links):
                     with col:
                         st.page_link(
@@ -74,21 +91,13 @@ def render_navbar(
 
         with account:
             if authenticated:
-                user = current_user()
-                user_name = user.display_name if user else "User"
-                role_label = (role or (user.role if user else "user") or "user").title()
-                st.caption(f"**{user_name}** · {role_label}")
-                if st.button(
-                    "Sign out",
-                    key="global_sign_out",
-                    width="stretch",
-                    help="End your secure session",
-                ):
-                    logout()
-                    if login_page:
-                        st.switch_page(login_page)
-                    else:
-                        st.rerun()
+                from frontend.components.ui import user_menu
+
+                user_menu(
+                    profile_page=profile_page,
+                    login_page=login_page,
+                    home_page=home,
+                )
 
     # Trust strip: plain text only (no OS emojis) so it renders identically
     # on Windows and Linux, and without the portal-labelling text.

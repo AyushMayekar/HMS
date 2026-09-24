@@ -14,10 +14,10 @@ from frontend.components.billing import (
     render_diagnostic_orders_table,
     render_prescriptions_table,
 )
+from frontend.components.ui import date_chips, expandable_row, loading
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import status_pill, format_datetime, display_api_error
 from frontend.api.services import AppointmentService, CatalogService
-from frontend.components.date_picker import booking_date_picker
 from frontend.config import APPOINTMENT_STATUSES
 from frontend.pages.patient._helpers import (
     build_doctor_map,
@@ -31,9 +31,10 @@ from frontend.pages.patient._helpers import (
     slot_time_label,
 )
 
-BOOKING_WINDOW_DAYS = 30
+BOOKING_WINDOW_DAYS = 20      # only the next 20 days are offered
 REASON_MAX = 500        # backend BookAppointmentRequest.reason limit
 CANCEL_REASON_MAX = 255  # backend PatientCancelRequest.reason limit
+PENDING_PAYMENT_STATES = (None, "pending", "unpaid")
 
 
 def _init_booking_state() -> None:
@@ -88,9 +89,23 @@ def render():
     st.divider()
 
     # =================================================================
-    # MY APPOINTMENTS
+    # MY APPOINTMENTS (single experience: booking, history, feedback, payment)
     # =================================================================
     section_title("My Appointments", "Reschedule or cancel only if you are sure — the original slot may be released.")
+
+    registry = st.session_state.get("_mc_pages", {}) or {}
+    link_targets = [
+        (registry.get("patient_history"), "History"),
+        (registry.get("patient_feedback"), "Feedback"),
+        (registry.get("patient_payments"), "Payments"),
+    ]
+    if any(t[0] is not None for t in link_targets):
+        link_cols = st.columns(len(link_targets), gap="small")
+        for col, (page, label) in zip(link_cols, link_targets):
+            if page is None:
+                continue
+            with col:
+                st.page_link(page, label=label, width="stretch")
 
     appts_res = appt_service.list(limit=100)
     if not appts_res.success:
@@ -184,15 +199,13 @@ def _render_booking_flow(departments: list, appt_service, catalog) -> None:
     doctor_name = selected_doctor.get("full_name") or "this doctor"
 
     # ---------------- Step 3: date ----------------
-    st.caption("Only dates with open slots inside the 30-day booking window are selectable.")
-
     avail_res = catalog.availability(doctor_id=doctor_id)
     if not avail_res.success:
         display_api_error(avail_res)
         return
     if not avail_res.data:
         empty_state(
-            f"Dr. {doctor_name} has no open slots right now.",
+            f"{doctor_name} has no open slots right now.",
             "Choose a different doctor or department.",
             icon="",
         )
@@ -202,47 +215,29 @@ def _render_booking_flow(departments: list, appt_service, catalog) -> None:
     window_end = today + timedelta(days=BOOKING_WINDOW_DAYS - 1)
     slots_by_date = {}
 
-    # Temporary booking-slot diagnostics.
-    # These print statements show exactly where each API slot is
-    # accepted or discarded by the frontend date filter.
-    print("\n========== BOOKING SLOT DEBUG ==========")
-    print("TODAY:", today)
-    print("WINDOW END:", window_end)
-    print("SELECTED DOCTOR:", doctor_id)
-    print("RAW AVAILABILITY COUNT:", len(avail_res.data or []))
-
+    # Only future dates inside the booking window are offered.
     for slot in avail_res.data:
         slot_dt = slot_datetime(slot)
-
-        passes_filter = (
-            slot_dt is not None
-            and today <= slot_dt.date() <= window_end
-        )
-
-        if not slot_dt:
+        if slot_dt is None:
             continue
-
-        if passes_filter:
+        if today <= slot_dt.date() <= window_end:
             slots_by_date.setdefault(slot_dt.date(), []).append(slot)
 
     calendar_days = sorted(slots_by_date.keys())
-
-    print("PARSED/ACCEPTED SLOT DATES:", list(slots_by_date.keys()))
-    print("CALENDAR DAYS:", calendar_days)
-    print("========================================\n")
     if not calendar_days:
         empty_state(
-            f"Dr. {doctor_name} has no open slots in the next {BOOKING_WINDOW_DAYS} days.",
+            f"{doctor_name} has no open slots in the next {BOOKING_WINDOW_DAYS} days.",
             "Choose a different doctor or check back soon.",
             icon="",
         )
         return
 
-    booking_date_picker(
+    date_chips(
         calendar_days,
         session_key="booking_date",
-        key_prefix="appt_cal",
+        key_prefix="appt_date",
         label="3. Choose a Date",
+        hint=f"Only future dates with open slots in the next {BOOKING_WINDOW_DAYS} days are shown.",
         clear_keys_on_change=["booking_slot_id"],
     )
 
@@ -348,7 +343,7 @@ def _render_slot_selection(
         icon=":material/verified:",
         key="confirm_booking_final",
     ):
-        with st.spinner("Booking your appointment..."):
+        with loading("Booking your appointment"):
             result = appt_service.book(
                 doctor_id=doctor_id,
                 availability_id=chosen_slot_id,
@@ -371,40 +366,86 @@ def _render_slot_selection(
 # Existing appointments
 # =====================================================================
 def render_appointment_row(a: dict, doctor_map: dict, key_prefix: str = "appt", actions: bool = True) -> None:
-    """Descriptive appointment row with optional reschedule/cancel actions."""
-    status = a.get("appointment_status")
-    with st.container(border=True):
-        col1, col2 = st.columns([3, 1], vertical_alignment="top")
-        with col1:
-            st.write(f"**{a.get('department_name') or 'Department'}** · "
-                     f"{doctor_display(doctor_map, a.get('doctor_id'))}")
-            st.caption(format_datetime(a.get("scheduled_start")))
-            st.caption(f"Appointment ID: {short_id(a.get('appointment_id'))}")
-        with col2:
-            status_pill(status or "unknown")
+    """Compact expandable bar: essentials collapsed, actions + visit record open.
 
-        if actions and status in ("booked", "confirmed"):
+    The visit record (prescriptions, tests, bill) is only fetched once the row
+    is opened, so a long list never triggers one request per appointment.
+    """
+    status = a.get("appointment_status")
+    appointment_id = a.get("appointment_id")
+    is_completed = status == "completed"
+    unpaid = is_completed and a.get("payment_status_at_booking") in PENDING_PAYMENT_STATES
+
+    meta = f"{format_datetime(a.get('scheduled_start'))} · {doctor_display(doctor_map, a.get('doctor_id'))}"
+
+    def actions_body() -> None:
+        registry = st.session_state.get("_mc_pages", {}) or {}
+
+        # Completed visit: feedback and payment entry points.
+        if is_completed:
+            c1, c2 = st.columns(2, gap="small")
+            with c1:
+                feedback_page = registry.get("patient_feedback")
+                if st.button(
+                    "Give feedback",
+                    key=f"{key_prefix}_fb_{appointment_id}",
+                    icon=":material/star:",
+                    type="primary" if not unpaid else "secondary",
+                    width="stretch",
+                ):
+                    if feedback_page is not None:
+                        st.switch_page(feedback_page)
+                    else:
+                        st.switch_page("pages/patient/feedback.py")
+            with c2:
+                payments_page = registry.get("patient_payments")
+                if st.button(
+                    "Pay invoice" if unpaid else "View payments",
+                    key=f"{key_prefix}_pay_{appointment_id}",
+                    icon=":material/credit_card:",
+                    type="primary" if unpaid else "secondary",
+                    width="stretch",
+                ):
+                    if payments_page is not None:
+                        st.switch_page(payments_page)
+                    else:
+                        st.switch_page("pages/patient/payments.py")
+            if unpaid:
+                st.caption(
+                    "This visit has an outstanding invoice — the payment page has it "
+                    "pre-selected."
+                )
+        elif status in ("booked", "confirmed"):
             c1, c2 = st.columns(2, gap="small")
             with c1:
                 if st.button(
                     "Reschedule",
-                    key=f"{key_prefix}_resch_{a.get('appointment_id')}",
+                    key=f"{key_prefix}_resch_{appointment_id}",
                     icon=":material/event:",
                     width="stretch",
                 ):
-                    st.session_state["reschedule_target"] = a.get("appointment_id")
+                    st.session_state["reschedule_target"] = appointment_id
                     st.rerun()
             with c2:
                 if st.button(
                     "Cancel Appointment",
-                    key=f"{key_prefix}_cancel_{a.get('appointment_id')}",
+                    key=f"{key_prefix}_cancel_{appointment_id}",
                     width="stretch",
                 ):
-                    st.session_state["cancel_target"] = a.get("appointment_id")
+                    st.session_state["cancel_target"] = appointment_id
                     st.rerun()
 
-        with st.expander("View visit details", expanded=False):
-            render_visit_detail(a.get("appointment_id"))
+        st.markdown("**Visit details**")
+        render_visit_detail(appointment_id)
+
+    expandable_row(
+        str(appointment_id),
+        title=f"{a.get('department_name') or 'Department'} · {doctor_display(doctor_map, a.get('doctor_id'))}",
+        meta=meta,
+        pill=status or "unknown",
+        id_text=f"Appointment {appointment_id}",
+        actions=actions_body,
+    )
 
 
 def render_visit_detail(appointment_id) -> None:
@@ -413,7 +454,7 @@ def render_visit_detail(appointment_id) -> None:
         st.caption("No appointment details are available.")
         return
 
-    with st.spinner("Loading visit details..."):
+    with loading("Loading visit details"):
         res = AppointmentService().get(appointment_id)
     if not res.success:
         display_api_error(res)
@@ -492,14 +533,14 @@ def render_reschedule_flow(appointment_id: str, appt_service, catalog, doctor_ma
         st.info("No alternative slots available in the booking window.")
         return
 
-    booking_date_picker(
+    date_chips(
         calendar_days,
         session_key="reschedule_date",
-        key_prefix="resch_cal",
+        key_prefix="resch_date",
         label="New Date",
+        hint="Only future dates with open slots are shown.",
         clear_keys_on_change=["reschedule_slot_id"],
     )
-
     new_date = st.session_state.get("reschedule_date")
     if not new_date:
         return
@@ -550,7 +591,7 @@ def render_reschedule_flow(appointment_id: str, appt_service, catalog, doctor_ma
     with c1:
         if st.button("Confirm Reschedule", type="primary", icon=":material/event:", width="stretch",
                      key="confirm_reschedule"):
-            with st.spinner("Rescheduling..."):
+            with loading("Rescheduling your appointment"):
                 result = appt_service.reschedule(appointment_id, new_slot_id)
             if result.success:
                 set_flash(
@@ -607,7 +648,7 @@ def render_cancel_flow(appointment_id: str, appt_service, doctor_map: dict) -> N
             if len(reason_value) > CANCEL_REASON_MAX:
                 st.error(f"The cancellation reason must be at most {CANCEL_REASON_MAX} characters.")
             else:
-                with st.spinner("Cancelling your appointment..."):
+                with loading("Cancelling your appointment"):
                     result = appt_service.cancel(appointment_id, reason=reason_value or None)
                 if result.success:
                     set_flash("appointments", "success",

@@ -9,6 +9,7 @@ from __future__ import annotations
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, empty_state
+from frontend.components.ui import pagination
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error, status_pill, format_datetime
 from frontend.api.staff_admin_services import DepartmentAdminService
@@ -50,7 +51,11 @@ def render():
     current_user()
 
     breadcrumb(["Admin", "Departments"])
+    render_content()
 
+
+def render_content() -> None:
+    """Department tabs — also used by the merged Administration › Management page."""
     service = DepartmentAdminService()
 
     tab_list, tab_create = st.tabs(["Departments", "New Department"])
@@ -161,7 +166,8 @@ def render():
             )
             return
 
-        for d in departments:
+        offset, page_limit = pagination(len(departments), 6, "admin_dept_page")
+        for d in departments[offset:offset + page_limit]:
             _render_dept_row(d, service)
 
 

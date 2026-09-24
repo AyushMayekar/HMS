@@ -8,6 +8,7 @@ from datetime import timedelta
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb
+from frontend.components.ui import recommendation_note
 from frontend.components.analytics import hospital_now, render_forecast
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error
@@ -86,6 +87,8 @@ def render_forecast_tab() -> None:
                 "department on the forecast date; the table below repeats the exact values."
             ),
         )
+
+    recommendation_note("Recommendations")
 
 
 def _render_forecast_result(res, *, metric_label: str, y_label: str, how_to_read: str) -> None:

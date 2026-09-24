@@ -12,6 +12,7 @@ import re
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, empty_state
+from frontend.components.ui import pagination
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error, status_pill, format_datetime
 from frontend.api.staff_admin_services import AdminUserService
@@ -113,7 +114,11 @@ def render():
     current_user()
 
     breadcrumb(["Admin", "Users"])
+    render_content()
 
+
+def render_content() -> None:
+    """Account tabs — also used by the merged Administration › Management page."""
     service = AdminUserService()
 
     tab_list, tab_create = st.tabs(["All Users", "Create Staff Account"])
@@ -320,7 +325,8 @@ def _render_list(service: AdminUserService) -> None:
         return
 
     st.caption(f"Showing {len(users)} of {total} account(s).")
-    for u in users:
+    offset, page_limit = pagination(len(users), 8, "admin_users_page")
+    for u in users[offset:offset + page_limit]:
         _render_user_row(u, service)
 
 

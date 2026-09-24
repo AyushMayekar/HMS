@@ -9,6 +9,7 @@ from __future__ import annotations
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, empty_state
+from frontend.components.ui import pagination
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error, status_pill, format_datetime
 from frontend.api.staff_admin_services import DoctorAdminService, DepartmentAdminService
@@ -50,7 +51,11 @@ def render():
     current_user()
 
     breadcrumb(["Admin", "Doctors"])
+    render_content()
 
+
+def render_content() -> None:
+    """Doctor tabs — also used by the merged Administration › Management page."""
     doctor_service = DoctorAdminService()
     dept_res = DepartmentAdminService().list(limit=200)
     if dept_res.success:
@@ -214,7 +219,8 @@ def render():
             )
             return
 
-        for doc in doctors:
+        offset, page_limit = pagination(len(doctors), 6, "admin_doc_page")
+        for doc in doctors[offset:offset + page_limit]:
             _render_doctor_row(doc, doctor_service, dept_lookup, departments)
 
 

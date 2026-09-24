@@ -1,13 +1,12 @@
 """
 Admin Dashboard page (§25.4, §18.1, §19.1).
 
-Hospital-wide KPIs, platform snapshot, and the no-show risk queue.
+Hospital-wide KPIs and the platform snapshot.
 The former bottom "Admin Actions" section has been removed.
 """
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb
-from frontend.components.analytics import render_no_show_risk
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error
 from frontend.api.analytics_services import AnalyticsService
@@ -29,7 +28,7 @@ def _as_list(data, key: str) -> list:
 def render():
     page_head(
         "Admin Overview",
-        "Hospital-wide governance — usage, users, departments, doctors, and risk.",
+        "Hospital-wide governance — usage, users, departments and doctors.",
         noindex=True,
     )
     require_role(["admin"])
@@ -51,18 +50,17 @@ def render():
         summary = (appt_res.data or {}).get("summary") or {}
         payment = (appt_res.data or {}).get("payment_summary") or {}
         avg_wait = summary.get("average_wait_minutes")
-        k1, k2, k3, k4, k5 = st.columns(5)
+        k1, k2, k3, k4 = st.columns(4)
         k1.metric("Appointments (30d)", summary.get("total_appointments", 0))
         k2.metric("Completion rate", f"{summary.get('completion_rate', 0):.1f}%")
-        k3.metric("No-show rate", f"{summary.get('no_show_rate', 0):.1f}%")
-        k4.metric(
+        k3.metric(
             "Avg. wait",
             f"{avg_wait} min" if avg_wait is not None else "—",
         )
-        k5.metric("Revenue (INR)", f"{payment.get('total_revenue', 0):,.0f}")
+        k4.metric("Revenue (INR)", f"{payment.get('total_revenue', 0):,.0f}")
         st.caption(
-            "Completion and no-show rates are shares of booked appointments; "
-            "average wait is measured from check-in to consultation."
+            "Completion rate is the share of booked appointments that were "
+            "completed; average wait is measured from check-in to consultation."
         )
 
     st.divider()
@@ -102,17 +100,6 @@ def render():
         )
 
     st.divider()
-
-    # ---------- No-show risk ----------
-    section_title(
-        "No-Show Risk Queue",
-        "Upcoming bookings in the next 48 hours scored by the ML model.",
-    )
-    risk_res = analytics.no_show_risk()
-    if not risk_res.success:
-        display_api_error(risk_res)
-    else:
-        render_no_show_risk(risk_res.data or {})
 
 
 if __name__ == "__main__":

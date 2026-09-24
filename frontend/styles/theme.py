@@ -77,8 +77,8 @@ def inject_base_css() -> None:
         }}
 
         .block-container {{
-            padding-top: 1rem;
-            padding-bottom: 3rem;
+            padding-top: 0.75rem;
+            padding-bottom: 1.75rem;
             max-width: 1180px;
         }}
 
@@ -109,7 +109,7 @@ def inject_base_css() -> None:
             border: 1px solid var(--mc-border);
             border-radius: var(--mc-radius);
             box-shadow: var(--mc-shadow);
-            margin: 0.25rem 0 1.35rem 0;
+            margin: 0.25rem 0 1rem 0;
             overflow: hidden;
         }}
         .mc-page-head-accent {{
@@ -126,7 +126,7 @@ def inject_base_css() -> None:
             font-weight: 700;
             letter-spacing: 0.08em;
             text-transform: uppercase;
-            color: var(--mc-teal);
+            color: #0F766E;
         }}
         .mc-page-title {{
             margin: 0 !important;
@@ -143,7 +143,7 @@ def inject_base_css() -> None:
         }}
 
         .mc-section-head {{
-            margin: 0.35rem 0 0.85rem 0;
+            margin: 0.3rem 0 0.7rem 0;
         }}
         .mc-section-title {{
             margin: 0 !important;
@@ -202,14 +202,173 @@ def inject_base_css() -> None:
             border: 1px solid var(--mc-border);
             border-radius: var(--mc-radius);
             box-shadow: var(--mc-shadow);
-            padding: 0.65rem 1rem 0.55rem 1rem;
-            margin-bottom: 0.65rem;
+            padding: 0.5rem 1rem 0.45rem 1rem;
+            margin-bottom: 0.6rem;
             position: sticky;
             top: 0.35rem;
             z-index: 100;
         }}
         .st-key-mc_main_nav [data-testid="stCaption"] {{
             color: var(--mc-muted) !important;
+        }}
+        /* Brand mark: icon-only, centred, clickable */
+        .st-key-mc_brand button,
+        .mc-brand-btn > button,
+        .mc-brand-btn button {{
+            background: transparent !important;
+            border: 1px solid transparent !important;
+            box-shadow: none !important;
+            padding: 0.3rem 0.6rem !important;
+            font-size: 1.5rem !important;
+            color: var(--mc-navy) !important;
+            min-width: auto !important;
+            width: auto !important;
+            min-height: auto !important;
+        }}
+        .st-key-mc_brand button:hover,
+        .mc-brand-btn button:hover {{
+            background: var(--mc-teal-soft) !important;
+            border-color: var(--mc-border) !important;
+        }}
+        .st-key-mc_brand button span,
+        .st-key-mc_brand button img {{
+            color: var(--mc-navy) !important;
+        }}
+        /* Nav links evenly spaced */
+        .st-key-mc_main_nav [data-testid="stPageLink-NavLink"] {{
+            font-size: 0.82rem;
+            padding: 0.4rem 0.35rem;
+        }}
+
+        /* Circular user-initial control */
+        .mc-userchip {{
+            display: flex;
+            justify-content: flex-end;
+        }}
+        .mc-userchip [data-testid="stPopoverDropdownToggle"],
+        .mc-userchip button {{
+            min-width: 2.4rem !important;
+            width: 2.4rem !important;
+            height: 2.4rem !important;
+            min-height: 2.4rem !important;
+            padding: 0 !important;
+            border-radius: 50% !important;
+            border: 1px solid var(--mc-border) !important;
+            background: var(--mc-teal-soft) !important;
+            color: var(--mc-navy) !important;
+            font-weight: 700 !important;
+            font-size: 0.85rem !important;
+            justify-content: center !important;
+            align-items: center !important;
+            box-shadow: none !important;
+        }}
+        .mc-userchip [data-testid="stPopoverDropdownToggle"] span {{
+            color: var(--mc-navy) !important;
+        }}
+
+        /* Loading state — solid block, no translucent content underneath */
+        .mc-loading {{
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: var(--mc-surface);
+            border: 1px solid var(--mc-border);
+            border-radius: var(--mc-radius);
+            box-shadow: var(--mc-shadow);
+            padding: 0.85rem 1rem;
+            margin: 0.35rem 0 0.85rem 0;
+            color: var(--mc-muted);
+            font-size: 0.92rem;
+            font-weight: 600;
+        }}
+        .mc-loading-dot {{
+            width: 0.7rem;
+            height: 0.7rem;
+            border-radius: 50%;
+            background: var(--mc-teal);
+            animation: mc_pulse 1.1s ease-in-out infinite;
+            flex-shrink: 0;
+        }}
+        @keyframes mc_pulse {{
+            0%, 100% {{ opacity: 0.35; transform: scale(0.85); }}
+            50% {{ opacity: 1; transform: scale(1); }}
+        }}
+
+        /* Expandable row / bar */
+        .mc-row-head {{
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }}
+        .mc-row-title {{
+            margin: 0;
+            font-size: 0.98rem;
+            font-weight: 700;
+            color: var(--mc-navy);
+        }}
+        .mc-row-meta {{
+            margin: 0.15rem 0 0 0;
+            color: var(--mc-muted);
+            font-size: 0.85rem;
+            line-height: 1.45;
+        }}
+        .mc-row-id {{
+            font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+            font-size: 0.78rem;
+            color: var(--mc-muted);
+        }}
+        .mc-row-actions {{
+            margin-top: 0.6rem;
+            padding-top: 0.6rem;
+            border-top: 1px solid var(--mc-border);
+        }}
+
+        /* Pagination bar */
+        .mc-pagination {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin: 0.5rem 0 0.9rem 0;
+            color: var(--mc-muted);
+            font-size: 0.85rem;
+        }}
+
+        /* Equal-height department cards */
+        .st-key-mc_dept_grid div[data-testid="stHorizontalBlock"] > div {{
+            display: flex;
+        }}
+        .st-key-mc_dept_grid div[data-testid="stHorizontalBlock"] > div > div {{
+            flex: 1 1 auto;
+        }}
+        .st-key-mc_dept_grid div[data-testid="stVerticalBlockBorderWrapper"] {{
+            height: 100%;
+        }}
+
+        /* Clamp long descriptions inside cards */
+        .mc-clamp-3 {{
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin: 0.2rem 0 0.4rem 0;
+            color: var(--mc-text);
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }}
+
+        /* Neutral note block for future recommendation areas */
+        .mc-note {{
+            background: var(--mc-surface);
+            border: 1px dashed var(--mc-border);
+            border-radius: var(--mc-radius);
+            padding: 0.7rem 0.9rem;
+            margin: 0.4rem 0 0.8rem 0;
+            color: var(--mc-muted);
+            font-size: 0.85rem;
+            line-height: 1.45;
         }}
 
         .mc-trust-strip {{
@@ -359,8 +518,8 @@ def inject_base_css() -> None:
         /* Footer — content is wrapped by the keyed st.container (mc_footer),
            so the navy surface sits behind every footer element. */
         .st-key-mc_footer {{
-            margin-top: 2.5rem;
-            padding: 1.75rem 1.25rem 0.75rem 1.25rem;
+            margin-top: 1.5rem;
+            padding: 1.4rem 1.25rem 0.85rem 1.25rem;
             background: var(--mc-navy);
             border-radius: var(--mc-radius);
             color: #E2E8F0;
@@ -409,8 +568,8 @@ def inject_base_css() -> None:
             flex-wrap: wrap;
             gap: 0.5rem 1.25rem;
             justify-content: space-between;
-            margin-top: 1.25rem;
-            padding: 0.9rem 0.15rem 0.35rem 0.15rem;
+            margin-top: 0.9rem;
+            padding: 0.75rem 0.15rem 0 0.15rem;
             border-top: 1px solid rgba(148, 163, 184, 0.35);
             font-size: 0.8rem;
             color: #CBD5E1;
@@ -465,6 +624,18 @@ def inject_base_css() -> None:
             }}
             .mc-footer-bottom {{
                 flex-direction: column;
+            }}
+            .st-key-mc_main_nav {{
+                position: static;
+                padding: 0.45rem 0.65rem;
+            }}
+            .st-key-mc_main_nav [data-testid="stPageLink-NavLink"] {{
+                font-size: 0.74rem;
+                padding: 0.35rem 0.25rem;
+                min-height: 2rem;
+            }}
+            .mc-page-head-body {{
+                padding: 0.9rem 0.9rem 0.95rem 0.35rem;
             }}
         }}
         </style>

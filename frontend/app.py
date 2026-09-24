@@ -76,6 +76,7 @@ a_analytics = st.Page("pages/admin/analytics.py", title="Analytics", icon=":mate
 a_users = st.Page("pages/admin/users.py", title="Users", icon=":material/groups:", url_path="users")
 a_departments = st.Page("pages/admin/departments.py", title="Departments", icon=":material/health_and_safety:", url_path="admin-departments")
 a_doctors = st.Page("pages/admin/doctors.py", title="Doctors", icon=":material/stethoscope:", url_path="doctors")
+a_management = st.Page("pages/admin/management.py", title="Management", icon=":material/settings:", url_path="management")
 a_audit = st.Page("pages/admin/audit_logs.py", title="Audit Logs", icon=":material/receipt_long:", url_path="audit-logs")
 a_predictions = st.Page("pages/admin/predictions.py", title="Forecasting", icon=":material/trending_up:", url_path="admin-forecasts")
 
@@ -93,6 +94,13 @@ st.session_state["_mc_pages"] = {
     "help": help_page,
     "legal": legal,
     "login": login,
+    "patient_history": p_history,
+    "patient_payments": p_payments,
+    "patient_feedback": p_feedback,
+    "patient_profile": p_profile,
+    "patient_dashboard": p_dashboard,
+    "patient_appointments": p_appointments,
+    "admin_management": a_management,
     "admin_users": a_users,
     "admin_departments": a_departments,
     "admin_doctors": a_doctors,
@@ -118,7 +126,7 @@ nav = st.navigation(
         ],
         "Staff Workspace": [s_dashboard, s_appointments, s_reminders, s_analytics, s_predictions],
         "Doctor Workspace": [d_dashboard, d_appointments],
-        "Administration": [a_dashboard, a_analytics, a_users, a_departments, a_doctors, a_audit, a_predictions],
+        "Administration": [a_dashboard, a_management, a_analytics, a_users, a_departments, a_doctors, a_audit, a_predictions],
         "System": [not_found, access_denied, error_page],
     },
     position="hidden",
@@ -127,7 +135,7 @@ nav = st.navigation(
 # =====================================================================
 # Role-based top navigation
 # =====================================================================
-public_nav = [home, departments, about, contact, help_page, legal]
+public_nav = [home, departments, about]
 
 role = current_role()
 role_nav = []
@@ -143,17 +151,19 @@ if role == "patient":
         p_profile,
     ]
 elif role == "staff":
-    role_nav = [s_dashboard, s_appointments, s_reminders, s_analytics, s_predictions]
+    role_nav = [s_dashboard, s_appointments, s_analytics, s_predictions]
 elif role == "doctor":
     role_nav = [d_dashboard, d_appointments]
 elif role == "admin":
-    role_nav = [a_dashboard, a_analytics, a_users, a_departments, a_doctors, a_audit, a_predictions]
+    role_nav = [a_dashboard, a_management, a_analytics, a_audit, a_predictions]
 
 render_navbar(
     public_nav=public_nav,
     role_nav=role_nav,
     login_page=login,
     role=role,
+    profile_page=p_profile if role == "patient" else None,
+    home_page=home,
 )
 
 # =====================================================================

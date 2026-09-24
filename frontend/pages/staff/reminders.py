@@ -6,6 +6,7 @@ from __future__ import annotations
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, empty_state
+from frontend.components.ui import doctor_label, loading
 from frontend.components.analytics import RISK_BAND_LEGEND, format_percent, resolve_risk_level, risk_pill
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error, format_datetime
@@ -72,12 +73,11 @@ def render():
             help=f"Sent to the patient with the reminder (maximum {MAX_MESSAGE_CHARS} characters).",
         )
     message = (message or "").strip()
-    if not message:
-        st.error("Enter a reminder message before sending.")
     st.caption("Timing: reminders go out 24 hours before the scheduled appointment (fixed 24-hour model).")
 
     # ---------- Appointment list ----------
-    res = service.list(limit=200)
+    with loading("Loading upcoming visits"):
+        res = service.list(limit=200)
     if not res.success:
         display_api_error(res)
         st.stop()
@@ -91,6 +91,8 @@ def render():
             icon="",
         )
     else:
+        if not message:
+            st.caption("Enter a reminder message before sending.")
         appointment_items.sort(key=lambda a: (
             not is_predicted_no_show(a),
             str(a.get("scheduled_start") or ""),
@@ -185,12 +187,12 @@ def render_reminder_row(appt: dict, *, service, channel: str, message: str, can_
         with col1:
             st.write(
                 f"**{patient}** · {appt.get('department_name') or 'Department not set'} · "
-                f"Dr. {appt.get('doctor_name') or 'Doctor'}"
+                f"{doctor_label(appt.get('doctor_name'))}"
             )
             details = [format_datetime(appt.get("scheduled_start"))]
             if appt.get("patient_email"):
                 details.append(str(appt.get("patient_email")))
-            details.append(f"Appointment `#{str(appointment_id or '')[:8]}`")
+            details.append(f"Appointment {appointment_id}")
             if appt.get("appointment_status"):
                 details.append(str(appt.get("appointment_status")).replace("_", " ").title())
             st.caption(" · ".join(details))
@@ -219,14 +221,15 @@ def render_reminder_row(appt: dict, *, service, channel: str, message: str, can_
                 disabled=not can_send,
             ):
                 if not can_send:
-                    st.error("Enter a reminder message before sending.")
-                    st.stop()
-                result = service.create(
-                    appointment_id=appointment_id,
-                    reminder_type=channel,
-                    hours_before_appointment=REMINDER_HOURS_BEFORE,
-                    message=message,
-                )
+                    st.caption("Enter a reminder message before sending.")
+                    return
+                with loading("Sending reminder"):
+                    result = service.create(
+                        appointment_id=appointment_id,
+                        reminder_type=channel,
+                        hours_before_appointment=REMINDER_HOURS_BEFORE,
+                        message=message,
+                    )
                 if result.success:
                     st.session_state[FLASH_KEY] = (
                         f"Reminder sent to {patient} for the visit on "
