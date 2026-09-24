@@ -19,8 +19,14 @@ class PatientCancelRequest(BaseModel):
 
 
 class CreatePaymentRequest(BaseModel):
+    """
+    Payment request.
+
+    ``amount`` is intentionally absent: the payable amount is always read
+    from the appointment's invoice_amount on the server.
+    """
+
     appointment_id: str = Field(min_length=1, description="UUID of the appointment")
-    amount: float = Field(gt=0, description="Simulated payment amount")
     currency: str = Field(default="INR", description="Currency code")
     payment_method: Literal["upi", "card", "cash"] = "upi"
     insurance_used: bool = Field(default=False, description="Whether insurance is used")

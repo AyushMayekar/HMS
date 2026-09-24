@@ -166,6 +166,33 @@ def require_patient(
     return auth
 
 
+def require_doctor(
+    auth: AuthContext = Depends(get_current_profile),
+) -> AuthContext:
+    """
+    Require doctor role with a linked doctor record.
+
+    The doctor identity used by every doctor endpoint comes from
+    ``profile.doctor_id`` (profiles -> doctors); it is never read from the
+    request payload.
+    """
+    profile = auth.profile or {}
+
+    if profile.get("role") != "doctor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Doctor privileges required.",
+        )
+
+    if not profile.get("doctor_id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This doctor account is not linked to a doctor record.",
+        )
+
+    return auth
+
+
 def get_authenticated_supabase_client(
     auth: AuthContext = Depends(get_current_user),
 ) -> Client:

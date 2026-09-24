@@ -29,6 +29,7 @@ def _dashboard_target() -> str:
     return {
         "patient": "pages/patient/dashboard.py",
         "staff": "pages/staff/dashboard.py",
+        "doctor": "pages/doctor/dashboard.py",
         "admin": "pages/admin/dashboard.py",
     }.get(current_role() or "", "pages/patient/dashboard.py")
 

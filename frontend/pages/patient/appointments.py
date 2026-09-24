@@ -9,10 +9,16 @@ import streamlit as st
 from datetime import datetime, timedelta
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, privacy_banner, empty_state
+from frontend.components.billing import (
+    render_billing_summary,
+    render_diagnostic_orders_table,
+    render_prescriptions_table,
+)
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import status_pill, format_datetime, display_api_error
 from frontend.api.services import AppointmentService, CatalogService
 from frontend.components.date_picker import booking_date_picker
+from frontend.config import APPOINTMENT_STATUSES
 from frontend.pages.patient._helpers import (
     build_doctor_map,
     doctor_display,
@@ -213,18 +219,6 @@ def _render_booking_flow(departments: list, appt_service, catalog) -> None:
             and today <= slot_dt.date() <= window_end
         )
 
-        print(
-            "SLOT CHECK:",
-            {
-                "availability_id": slot.get("availability_id"),
-                "slot_date": slot.get("slot_date"),
-                "start_time": slot.get("start_time"),
-                "status": slot.get("status"),
-                "slot_datetime": slot_dt,
-                "passes_date_filter": passes_filter,
-            },
-        )
-
         if not slot_dt:
             continue
 
@@ -408,6 +402,50 @@ def render_appointment_row(a: dict, doctor_map: dict, key_prefix: str = "appt", 
                 ):
                     st.session_state["cancel_target"] = a.get("appointment_id")
                     st.rerun()
+
+        with st.expander("View visit details", expanded=False):
+            render_visit_detail(a.get("appointment_id"))
+
+
+def render_visit_detail(appointment_id) -> None:
+    """Full visit record: appointment, prescriptions, orders and the bill."""
+    if not appointment_id:
+        st.caption("No appointment details are available.")
+        return
+
+    with st.spinner("Loading visit details..."):
+        res = AppointmentService().get(appointment_id)
+    if not res.success:
+        display_api_error(res)
+        return
+
+    data = res.data or {}
+    doctor = data.get("doctor") or {}
+    department = data.get("department") or {}
+
+    i1, i2 = st.columns(2)
+    with i1:
+        st.write(f"**Doctor:** {doctor.get('full_name') or 'Doctor not set'}")
+        if doctor.get("specialization"):
+            st.caption(str(doctor["specialization"]))
+        st.write(f"**Scheduled:** {format_datetime(data.get('scheduled_start'))}")
+        st.write(f"**Status:** {APPOINTMENT_STATUSES.get(data.get('appointment_status'), data.get('appointment_status') or '—')}")
+    with i2:
+        st.write(f"**Department:** {department.get('name') or data.get('department_name') or 'Department not set'}")
+        st.write(f"**Appointment ID:** `{short_id(data.get('appointment_id'))}`")
+        if data.get("actual_checkin_time"):
+            st.caption(f"Checked in {format_datetime(data.get('actual_checkin_time'))}")
+        if data.get("actual_service_end"):
+            st.caption(f"Visit completed {format_datetime(data.get('actual_service_end'))}")
+
+    st.markdown("**Prescriptions**")
+    render_prescriptions_table(data.get("prescriptions"))
+
+    st.markdown("**Diagnostic tests**")
+    render_diagnostic_orders_table(data.get("diagnostic_test_orders"))
+
+    st.markdown("**Bill**")
+    render_billing_summary(data.get("billing_summary"))
 
 
 def render_reschedule_flow(appointment_id: str, appt_service, catalog, doctor_map: dict) -> None:

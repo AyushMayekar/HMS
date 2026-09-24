@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 import streamlit as st
 
-from frontend.config import ROLE_ADMIN, ROLE_PATIENT, ROLE_STAFF, VALID_ROLES
+from frontend.config import ROLE_ADMIN, ROLE_DOCTOR, ROLE_PATIENT, ROLE_STAFF, VALID_ROLES
 
 
 @dataclass
@@ -29,6 +29,10 @@ class UserProfile:
     @property
     def is_staff(self) -> bool:
         return self.role == ROLE_STAFF
+
+    @property
+    def is_doctor(self) -> bool:
+        return self.role == ROLE_DOCTOR
 
     @property
     def is_admin(self) -> bool:
@@ -123,7 +127,7 @@ def _render_sign_in_required() -> None:
         ">
             <h2 style="color: var(--mc-navy, #0B3C5D); margin-bottom: 0.75rem;">Sign in to continue</h2>
             <p style="color: var(--mc-text, #1E293B);">
-                This area is available to signed-in patients, staff, and administrators.
+                This area is available to signed-in patients, staff, doctors, and administrators.
             </p>
         </div>
         """,

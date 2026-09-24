@@ -23,6 +23,7 @@ from app.api.patient_reminders import router as patient_reminders_router
 from app.api.patient_admin_requests import router as patient_admin_requests_router
 from app.api.staff_appointments import router as staff_appointments_router
 from app.api.staff_reminders import router as staff_reminders_router
+from app.api.doctor import router as doctor_router
 from app.api.admin_users import router as admin_users_router
 from app.api.admin_audit_logs import router as admin_audit_logs_router
 from app.api.analytics import router as analytics_router
@@ -186,6 +187,9 @@ app.include_router(patient_admin_requests_router, prefix="/api/v1")
 # Staff endpoints
 app.include_router(staff_appointments_router, prefix="/api/v1")
 app.include_router(staff_reminders_router, prefix="/api/v1")
+
+# Doctor endpoints (clinical workflow)
+app.include_router(doctor_router, prefix="/api/v1")
 
 # Admin endpoints
 app.include_router(admin_users_router, prefix="/api/v1")

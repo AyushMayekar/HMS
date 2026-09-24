@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from app.config.settings import get_supabase_admin_client
 from app.services.audit_service import log_audit_event
+from app.services.billing_service import DEFAULT_CONSULTATION_CHARGE
 from app.utils.exceptions import (
     AppointmentNotFoundError,
     ForbiddenError,
@@ -49,7 +50,6 @@ def create_payment(
     *,
     patient_id: str,
     appointment_id: str,
-    amount: float,
     currency: str = "INR",
     payment_method: str,
     insurance_used: bool = False,
@@ -58,10 +58,12 @@ def create_payment(
     """
     Create a simulated payment for a patient's own appointment.
     1. Verify appointment exists and belongs to patient.
-    2. Simulate payment outcome.
-    3. Insert payment record.
-    4. Update appointment payment status.
-    5. Audit log.
+    2. Read the payable amount from appointment.invoice_amount (server
+       derived — a client-supplied amount is never trusted).
+    3. Simulate payment outcome.
+    4. Insert payment record.
+    5. Update appointment payment status.
+    6. Audit log.
     """
     admin_supabase = get_supabase_admin_client()
 
@@ -69,7 +71,7 @@ def create_payment(
     appt_res = (
         admin_supabase
         .table("appointments")
-        .select("appointment_id, patient_id, appointment_status")
+        .select("appointment_id, patient_id, appointment_status, invoice_amount, consultation_charge")
         .eq("appointment_id", appointment_id)
         .execute()
     )
@@ -83,7 +85,15 @@ def create_payment(
     if appointment.get("appointment_status") == "cancelled":
         raise InvalidOperationError("Cannot create payment for a cancelled appointment.")
 
-    # 2. Simulate payment
+    # 2. Payable amount comes from the authoritative appointment bill.
+    raw_amount = appointment.get("invoice_amount")
+    if raw_amount is None:
+        raw_amount = appointment.get("consultation_charge")
+    if raw_amount is None:
+        raw_amount = DEFAULT_CONSULTATION_CHARGE
+    amount = round(float(raw_amount), 2)
+
+    # 3. Simulate payment
     simulation = simulate_payment_outcome()
 
     now = datetime.now(timezone.utc)
@@ -109,7 +119,7 @@ def create_payment(
     if not insert_res.data:
         raise InvalidOperationError("Failed to record payment.")
 
-    # 3. Update appointment payment status
+    # 4. Update appointment payment status
     if simulation["status"] == "success":
         admin_supabase.table("appointments").update({
             "payment_status_at_booking": "paid",

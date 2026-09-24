@@ -66,6 +66,10 @@ s_reminders = st.Page("pages/staff/reminders.py", title="Reminders", icon=":mate
 s_analytics = st.Page("pages/staff/analytics.py", title="Analytics", icon=":material/query_stats:", url_path="analytics")
 s_predictions = st.Page("pages/staff/predictions.py", title="Forecasting", icon=":material/trending_up:", url_path="predictions")
 
+# Doctor workspace
+d_dashboard = st.Page("pages/doctor/dashboard.py", title="Clinic Desk", icon=":material/stethoscope:", url_path="doctor")
+d_appointments = st.Page("pages/doctor/appointments.py", title="Consultations", icon=":material/clinical_notes:", url_path="doctor-appointments")
+
 # Administration
 a_dashboard = st.Page("pages/admin/dashboard.py", title="Overview", icon=":material/admin_panel_settings:", url_path="admin")
 a_analytics = st.Page("pages/admin/analytics.py", title="Analytics", icon=":material/bar_chart:", url_path="admin-analytics")
@@ -113,6 +117,7 @@ nav = st.navigation(
             p_profile,
         ],
         "Staff Workspace": [s_dashboard, s_appointments, s_reminders, s_analytics, s_predictions],
+        "Doctor Workspace": [d_dashboard, d_appointments],
         "Administration": [a_dashboard, a_analytics, a_users, a_departments, a_doctors, a_audit, a_predictions],
         "System": [not_found, access_denied, error_page],
     },
@@ -139,6 +144,8 @@ if role == "patient":
     ]
 elif role == "staff":
     role_nav = [s_dashboard, s_appointments, s_reminders, s_analytics, s_predictions]
+elif role == "doctor":
+    role_nav = [d_dashboard, d_appointments]
 elif role == "admin":
     role_nav = [a_dashboard, a_analytics, a_users, a_departments, a_doctors, a_audit, a_predictions]
 

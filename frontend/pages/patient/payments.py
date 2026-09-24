@@ -106,13 +106,13 @@ def render():
         appt = appt_options[pick]
         default_amount = float(appt.get("invoice_amount") or 0) or 1.0
 
-        amount = st.number_input(
-            "Amount (INR)",
-            min_value=1.0,
-            value=default_amount,
-            step=10.0,
-            key="pay_amount_input",
-            help="The consultation invoice amount is pre-filled; adjust only if advised by the billing desk.",
+        # The amount is derived by the server from the appointment invoice
+        # (consultation charge + prescriptions + diagnostic orders); it is
+        # intentionally not client-editable.
+        st.caption(
+            f"Billed amount: **INR {default_amount:,.2f}** — "
+            "the payment amount is taken from your visit's invoice "
+            "(consultation charge + medicines + diagnostic tests)."
         )
 
         method = st.selectbox(
@@ -165,14 +165,10 @@ def render():
                 if reference_error:
                     st.error(reference_error)
                     return
-            if not amount or float(amount) <= 0:
-                st.error("Enter a valid amount greater than zero.")
-                return
 
             with st.spinner("Processing payment..."):
                 result = pay_service.create(
                     appointment_id=appt.get("appointment_id"),
-                    amount=float(amount),
                     payment_method=method,
                     insurance_used=bool(insurance_used),
                     claim_required=bool(claim_required),
@@ -191,7 +187,8 @@ def render():
             status = data.get("status")
             txn_ref = data.get("transaction_reference")
             ref_note = f" Reference: {txn_ref}." if txn_ref else ""
-            amount_note = f"INR {float(amount):,.2f} via {PAYMENT_METHODS[method]}"
+            paid_amount = float(data.get("amount") or default_amount)
+            amount_note = f"INR {paid_amount:,.2f} via {PAYMENT_METHODS[method]}"
 
             if status == "success":
                 set_flash(

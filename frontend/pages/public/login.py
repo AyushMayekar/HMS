@@ -141,6 +141,7 @@ def render() -> None:
         landing = {
             "patient": "pages/patient/dashboard.py",
             "staff": "pages/staff/dashboard.py",
+            "doctor": "pages/doctor/dashboard.py",
             "admin": "pages/admin/dashboard.py",
         }.get(current_role(), "pages/public/home.py")
         st.switch_page(landing)

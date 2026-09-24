@@ -29,7 +29,6 @@ def create_payment_endpoint(
     payment = create_payment(
         patient_id=patient.user.id,
         appointment_id=payload.appointment_id,
-        amount=payload.amount,
         currency=payload.currency,
         payment_method=payload.payment_method,
         insurance_used=payload.insurance_used,

@@ -74,8 +74,9 @@ API_PREFIX = f"/api/{CONFIG.api_version}"
 # Role constants
 ROLE_PATIENT = "patient"
 ROLE_STAFF = "staff"
+ROLE_DOCTOR = "doctor"
 ROLE_ADMIN = "admin"
-VALID_ROLES = {ROLE_PATIENT, ROLE_STAFF, ROLE_ADMIN}
+VALID_ROLES = {ROLE_PATIENT, ROLE_STAFF, ROLE_DOCTOR, ROLE_ADMIN}
 
 # Appointment status constants
 APPOINTMENT_STATUSES = {

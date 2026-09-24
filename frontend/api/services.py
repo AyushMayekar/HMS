@@ -76,7 +76,6 @@ class PaymentService:
     def create(
         self,
         appointment_id: str,
-        amount: float,
         currency: str = "INR",
         payment_method: str = "upi",
         insurance_used: bool = False,
@@ -85,13 +84,16 @@ class PaymentService:
     ) -> APIResponse:
         """Create a payment for an appointment.
 
+        The payment amount is derived on the server from the appointment
+        invoice (consultation charge + prescriptions + diagnostic orders);
+        the client never sends it.
+
         ``payment_method_reference`` carries the method-specific input
         (card number or UPI id); the backend validates it.
         """
         from frontend.api.endpoints import PATIENT_PAYMENTS_CREATE
         payload = {
             "appointment_id": appointment_id,
-            "amount": amount,
             "currency": currency,
             "payment_method": payment_method,
             "insurance_used": insurance_used,
@@ -206,6 +208,103 @@ class ReminderService:
         return self.client.get(PATIENT_REMINDERS_LIST, params={"limit": limit, "offset": offset})
 
 
+class DoctorService:
+    """Service for the doctor clinical workflow (assigned visits only)."""
+
+    def __init__(self, client: Any = None):
+        self.client = client or get_api_client()
+
+    def profile(self) -> APIResponse:
+        """Logged-in doctor's profile, doctor record and department."""
+        from frontend.api.endpoints import DOCTOR_PROFILE
+        return self.client.get(DOCTOR_PROFILE)
+
+    def appointments(
+        self,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> APIResponse:
+        """List appointments assigned to the logged-in doctor."""
+        from frontend.api.endpoints import DOCTOR_APPOINTMENTS_LIST
+        params = {"limit": limit, "offset": offset}
+        if status:
+            params["appointment_status"] = status
+        return self.client.get(DOCTOR_APPOINTMENTS_LIST, params=params)
+
+    def get(self, appointment_id: str) -> APIResponse:
+        """Appointment detail with line items and the current bill."""
+        from frontend.api.endpoints import DOCTOR_APPOINTMENTS_GET
+        endpoint = DOCTOR_APPOINTMENTS_GET.format(appointment_id=appointment_id)
+        return self.client.get(endpoint)
+
+    def start_service(self, appointment_id: str) -> APIResponse:
+        """Start the consultation (requires staff check-in first)."""
+        from frontend.api.endpoints import DOCTOR_START_SERVICE
+        endpoint = DOCTOR_START_SERVICE.format(appointment_id=appointment_id)
+        return self.client.post(endpoint, json_data={})
+
+    def end_service(self, appointment_id: str) -> APIResponse:
+        """End the consultation."""
+        from frontend.api.endpoints import DOCTOR_END_SERVICE
+        endpoint = DOCTOR_END_SERVICE.format(appointment_id=appointment_id)
+        return self.client.post(endpoint, json_data={})
+
+    def create_prescription(
+        self,
+        appointment_id: str,
+        medicine_id: str,
+        quantity: int,
+        dosage: str,
+        frequency: str,
+        duration_days: int,
+        instructions: Optional[str] = None,
+    ) -> APIResponse:
+        """Prescribe a catalog medicine (charges are set by the server)."""
+        from frontend.api.endpoints import DOCTOR_PRESCRIPTIONS_CREATE
+        endpoint = DOCTOR_PRESCRIPTIONS_CREATE.format(appointment_id=appointment_id)
+        payload = {
+            "medicine_id": medicine_id,
+            "quantity": int(quantity),
+            "dosage": dosage,
+            "frequency": frequency,
+            "duration_days": int(duration_days),
+        }
+        if instructions:
+            payload["instructions"] = instructions
+        return self.client.post(endpoint, json_data=payload)
+
+    def create_diagnostic_order(
+        self,
+        appointment_id: str,
+        test_id: str,
+        quantity: int = 1,
+        priority: str = "routine",
+        notes: Optional[str] = None,
+    ) -> APIResponse:
+        """Order a catalog diagnostic test (charges are set by the server)."""
+        from frontend.api.endpoints import DOCTOR_DIAGNOSTIC_ORDERS_CREATE
+        endpoint = DOCTOR_DIAGNOSTIC_ORDERS_CREATE.format(appointment_id=appointment_id)
+        payload = {
+            "test_id": test_id,
+            "quantity": int(quantity),
+            "priority": priority,
+        }
+        if notes:
+            payload["notes"] = notes
+        return self.client.post(endpoint, json_data=payload)
+
+    def medicines(self, limit: int = 500) -> APIResponse:
+        """Read-only medicines catalog for prescribing."""
+        from frontend.api.endpoints import DOCTOR_MEDICINES
+        return self.client.get(DOCTOR_MEDICINES, params={"limit": limit})
+
+    def diagnostic_tests(self, limit: int = 500) -> APIResponse:
+        """Read-only diagnostic tests catalog for ordering."""
+        from frontend.api.endpoints import DOCTOR_DIAGNOSTIC_TESTS
+        return self.client.get(DOCTOR_DIAGNOSTIC_TESTS, params={"limit": limit})
+
+
 class PredictionService:
     """Service for prediction/forecasting endpoints used by pages."""
 
@@ -263,6 +362,7 @@ __all__ = [
     "FeedbackService",
     "AdminRequestService",
     "ReminderService",
+    "DoctorService",
     "PredictionService",
     "AuthService",
     "AgentService",

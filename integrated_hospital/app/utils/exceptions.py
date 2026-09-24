@@ -132,6 +132,24 @@ class DoctorNotFoundError(AppException):
         )
 
 
+class MedicineNotFoundError(AppException):
+    def __init__(self, medicine_id: str = ""):
+        super().__init__(
+            message=f"Medicine '{medicine_id}' not found." if medicine_id else "Medicine not found.",
+            status_code=404,
+            error_code="MEDICINE_NOT_FOUND",
+        )
+
+
+class DiagnosticTestNotFoundError(AppException):
+    def __init__(self, test_id: str = ""):
+        super().__init__(
+            message=f"Diagnostic test '{test_id}' not found." if test_id else "Diagnostic test not found.",
+            status_code=404,
+            error_code="DIAGNOSTIC_TEST_NOT_FOUND",
+        )
+
+
 class SlotUnavailableError(AppException):
     def __init__(self, message: str = "The selected time slot is not available."):
         super().__init__(

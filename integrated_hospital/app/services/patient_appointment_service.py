@@ -11,6 +11,11 @@ from uuid import uuid4
 
 from app.config.settings import get_supabase_admin_client
 from app.services.audit_service import log_audit_event
+from app.services.billing_service import (
+    DEFAULT_CONSULTATION_CHARGE,
+    get_billing_context,
+    to_billing_summary,
+)
 from app.utils.exceptions import (
     AppointmentNotFoundError,
     AvailabilityNotFoundError,
@@ -275,7 +280,10 @@ def book_appointment(
     # Payment requirement (simplified: always require payment for new visits)
     payment_required = True
     payment_status_at_booking = "pending"
-    invoice_amount = 500.0  # default base amount
+    # Base consultation charge. invoice_amount starts equal to it and is
+    # recalculated by the billing service whenever clinical orders change.
+    consultation_charge = DEFAULT_CONSULTATION_CHARGE
+    invoice_amount = consultation_charge
     insurance_used = False
     claim_required = False
 
@@ -307,6 +315,7 @@ def book_appointment(
         # Payment context
         "payment_required": payment_required,
         "payment_status_at_booking": payment_status_at_booking,
+        "consultation_charge": consultation_charge,
         "invoice_amount": invoice_amount,
         "insurance_used": insurance_used,
         "claim_required": claim_required,
@@ -426,6 +435,13 @@ def get_patient_appointment(
         )
         if dept_res.data:
             appointment["department"] = dept_res.data[0]
+
+    # Clinical records and the authoritative bill, scoped to this
+    # appointment only (never another patient's data).
+    context = get_billing_context(admin_supabase, appointment)
+    appointment["prescriptions"] = context["prescriptions"]
+    appointment["diagnostic_test_orders"] = context["diagnostic_test_orders"]
+    appointment["billing_summary"] = to_billing_summary(context)
 
     return appointment
 

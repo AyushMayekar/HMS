@@ -88,6 +88,8 @@ def display_api_error(response: APIResponse) -> None:
         "APPOINTMENT_NOT_FOUND": "Appointment not found.",
         "AVAILABILITY_NOT_FOUND": "The selected availability slot was not found.",
         "DOCTOR_NOT_FOUND": "The selected doctor was not found.",
+        "MEDICINE_NOT_FOUND": "The selected medicine was not found in the catalog.",
+        "DIAGNOSTIC_TEST_NOT_FOUND": "The selected diagnostic test was not found in the catalog.",
         "DOCUMENT_NOT_FOUND": "Document not found.",
         "KNOWLEDGE_INDEXING_ERROR": "Failed to index the knowledge document.",
     }

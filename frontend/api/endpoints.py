@@ -65,6 +65,17 @@ STAFF_APPOINTMENTS_NO_SHOW = "/staff/appointments/{appointment_id}/no-show"
 STAFF_REMINDERS_CREATE = "/staff/reminders/{appointment_id}"
 STAFF_REMINDERS_LIST = "/staff/reminders"
 
+# Doctor clinical workflow
+DOCTOR_PROFILE = "/doctor/profile"
+DOCTOR_APPOINTMENTS_LIST = "/doctor/appointments"
+DOCTOR_APPOINTMENTS_GET = "/doctor/appointments/{appointment_id}"
+DOCTOR_START_SERVICE = "/doctor/appointments/{appointment_id}/start-service"
+DOCTOR_END_SERVICE = "/doctor/appointments/{appointment_id}/end-service"
+DOCTOR_PRESCRIPTIONS_CREATE = "/doctor/appointments/{appointment_id}/prescriptions"
+DOCTOR_DIAGNOSTIC_ORDERS_CREATE = "/doctor/appointments/{appointment_id}/diagnostic-orders"
+DOCTOR_MEDICINES = "/doctor/medicines"
+DOCTOR_DIAGNOSTIC_TESTS = "/doctor/diagnostic-tests"
+
 # Admin Users
 ADMIN_USERS_LIST = "/admin/users"
 ADMIN_USERS_GET = "/admin/users/{user_id}"
