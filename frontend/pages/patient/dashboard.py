@@ -1,8 +1,10 @@
 """
 Patient Dashboard page.
 
-Upcoming appointments, departments and a compact reminders/requests panel —
-all backed by live backend data. Booking lives on the Appointments page.
+A read-only overview: the next visit, outstanding invoices, departments and a
+compact reminders/requests panel — all backed by live backend data. Counts,
+lists, booking and every appointment action live on the consolidated
+Appointments page (History / Payments / Feedback are sections there).
 """
 import streamlit as st
 
@@ -13,8 +15,8 @@ from frontend.components.navbar import (
     privacy_banner,
     empty_state,
 )
-from frontend.components.cards import kpi_row, department_card
-from frontend.components.ui import expandable_row, loading
+from frontend.components.cards import department_card
+from frontend.components.ui import expandable_row, loading, page_slice
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import status_pill, format_datetime, display_api_error
 from frontend.api.services import (
@@ -24,6 +26,7 @@ from frontend.api.services import (
     ReminderService,
     CatalogService,
 )
+from frontend.pages.patient.appointments import open_section
 from frontend.pages.patient._helpers import (
     build_doctor_map,
     doctor_display,
@@ -34,12 +37,14 @@ from frontend.pages.patient._helpers import (
 )
 
 DEPARTMENT_CARD_LIMIT = 6
+REMINDERS_PAGE_SIZE = 5   # reminders per page in the status panel
+REQUESTS_PAGE_SIZE = 5    # requests per page in the status panel
 
 
 def render():
     page_head(
         "Patient Dashboard",
-        "Your care overview — appointments, payments, and requests.",
+        "Your care overview: appointments, payments, and requests.",
         noindex=True,
     )
 
@@ -80,11 +85,12 @@ def render():
         if a.get("appointment_status") not in ("completed", "cancelled", "no_show")
     ]
     upcoming.sort(key=lambda a: a.get("scheduled_start") or "")
-    completed = [a for a in appointments if a.get("appointment_status") == "completed"]
     pending_payments = sum(1 for p in payments if p.get("status") == "pending")
 
     # ------------------------------------------------------------------
-    # Welcome + KPIs
+    # Welcome — counts and appointment actions now live on the consolidated
+    # Appointments hub (History / Payments / Feedback are sections there),
+    # so this screen stays a read-only overview that links into it.
     # ------------------------------------------------------------------
     section_title(
         f"Welcome, {user.display_name}",
@@ -92,21 +98,23 @@ def render():
         "history, feedback and payments.",
     )
 
-    kpi_row([
-        ("Appointments", len(appointments), None, None),
-        ("Upcoming", len(upcoming), None, None),
-        ("Completed visits", len(completed), None, None),
-        ("Pending payments", pending_payments, None, None),
-    ])
+    if pending_payments:
+        st.info(
+            f"You have {pending_payments} outstanding invoice"
+            f"{'s' if pending_payments != 1 else ''}. "
+            f"{'Settle it' if pending_payments == 1 else 'Settle them'} "
+            "from the Payments section of Appointments."
+        )
 
     st.divider()
 
     # ------------------------------------------------------------------
-    # Upcoming appointments — compact expandable bars
+    # Next visit — one compact preview; booking, rescheduling and cancelling
+    # all live on the Appointments hub.
     # ------------------------------------------------------------------
     section_title(
-        "Upcoming Appointments",
-        "Open a visit to see the waiting forecast and reschedule or cancel it.",
+        "Next Visit",
+        "The essentials at a glance. Book, reschedule and cancel from Appointments.",
     )
 
     if not upcoming:
@@ -115,8 +123,10 @@ def render():
             "Open Appointments to book a visit with one of our specialists.",
             icon="",
         )
-    for appt in upcoming[:6]:
-        _render_upcoming_row(appt, doctor_map)
+    else:
+        _render_next_visit(upcoming[0], doctor_map, total=len(upcoming))
+
+    _render_hub_links(pending_payments)
 
     st.divider()
 
@@ -125,7 +135,7 @@ def render():
     # ------------------------------------------------------------------
     section_title(
         "Hospital Departments",
-        "Live information about our specialties — open a card for the full description.",
+        "Live information about our specialties, open a card for the full description.",
     )
 
     if not departments:
@@ -187,7 +197,10 @@ def render_status_panel() -> None:
         if not reminders:
             st.caption("No appointment reminders yet. Staff send reminders for higher-risk visits.")
         else:
-            for rem in reminders[:3]:
+            rem_rows, _, _ = page_slice(
+                reminders, len(reminders), REMINDERS_PAGE_SIZE, "dash_reminders_page",
+            )
+            for rem in rem_rows:
                 st.caption(
                     f"Sent {format_datetime(rem.get('sent_at') or rem.get('created_at'))} "
                     f"· Reference {short_id(rem.get('appointment_id'))}"
@@ -197,7 +210,10 @@ def render_status_panel() -> None:
         if not requests:
             st.caption("You have not submitted any administrative requests.")
         else:
-            for req in requests[:5]:
+            req_rows, _, _ = page_slice(
+                requests, len(requests), REQUESTS_PAGE_SIZE, "dash_requests_page",
+            )
+            for req in req_rows:
                 status = str(req.get("status") or "").replace("_", " ").title()
                 st.caption(
                     f"{status} · {str(req.get('category') or 'request').replace('_', ' ').title()} "
@@ -213,18 +229,22 @@ def render_status_panel() -> None:
     )
 
 
-def _render_upcoming_row(appt: dict, doctor_map: dict) -> None:
-    """One upcoming appointment: essentials collapsed, details and actions open."""
+def _render_next_visit(appt: dict, doctor_map: dict, total: int) -> None:
+    """Read-only preview of the nearest appointment — the hub owns the actions."""
     status = appt.get("appointment_status") or "unknown"
     dept = appt.get("department_name") or "Department"
 
-    meta = (
-        f"{format_datetime(appt.get('scheduled_start'))} · "
-        f"{doctor_display(doctor_map, appt.get('doctor_id'))} · "
-        f"Appointment {short_id(appt.get('appointment_id'))}"
-    )
+    with st.container(border=True):
+        left, right = st.columns([5, 1], vertical_alignment="top")
+        with left:
+            st.markdown(f"**{dept} · {doctor_display(doctor_map, appt.get('doctor_id'))}**")
+            st.caption(
+                f"{format_datetime(appt.get('scheduled_start'))} · "
+                f"Appointment {short_id(appt.get('appointment_id'))}"
+            )
+        with right:
+            status_pill(status)
 
-    def actions():
         if is_checked_in(appt):
             wait = predicted_wait_minutes(appt)
             checked_in_at = format_datetime(appt.get("actual_checkin_time"))
@@ -236,36 +256,42 @@ def _render_upcoming_row(appt: dict, doctor_map: dict) -> None:
                     "will appear here as soon as it is available."
                 )
 
-        if status in ("booked", "confirmed"):
-            c1, c2 = st.columns(2, gap="small")
-            with c1:
-                if st.button(
-                    "Reschedule",
-                    key=f"dash_reschedule_{appt.get('appointment_id')}",
-                    icon=":material/event:",
-                    width="stretch",
-                ):
-                    st.session_state["reschedule_target"] = appt.get("appointment_id")
-                    st.switch_page("pages/patient/appointments.py")
-            with c2:
-                if st.button(
-                    "Cancel appointment",
-                    key=f"dash_cancel_{appt.get('appointment_id')}",
-                    width="stretch",
-                ):
-                    st.session_state["cancel_target"] = appt.get("appointment_id")
-                    st.switch_page("pages/patient/appointments.py")
-        else:
-            st.caption("This visit is with the clinical team. Changes are handled at the care desk.")
+        if total > 1:
+            st.caption(
+                f"{total} upcoming appointments in total. Open Appointments to "
+                "review and manage all of them."
+            )
 
-    expandable_row(
-        str(appt.get("appointment_id")),
-        title=f"{dept} · {doctor_display(doctor_map, appt.get('doctor_id'))}",
-        meta=meta,
-        pill=status,
-        id_text=f"Appointment {appt.get('appointment_id')}",
-        actions=actions,
-    )
+
+def _render_hub_links(pending_payments: int) -> None:
+    """Entry points into the consolidated Appointments hub."""
+    registry = st.session_state.get("_mc_pages", {}) or {}
+    appointments_page = registry.get("patient_appointments") or "pages/patient/appointments.py"
+
+    if pending_payments:
+        left, right = st.columns([3, 2], gap="small")
+        with left:
+            st.page_link(
+                appointments_page,
+                label="Open Appointments",
+                icon=":material/calendar_month:",
+                width="stretch",
+            )
+        with right:
+            if st.button(
+                "Open Payments",
+                key="dash_open_payments",
+                icon=":material/credit_card:",
+                width="stretch",
+            ):
+                open_section("Payments")
+    else:
+        st.page_link(
+            appointments_page,
+            label="Open Appointments",
+            icon=":material/calendar_month:",
+            width="stretch",
+        )
 
 
 def _render_department_card(dept: dict) -> None:

@@ -1,13 +1,17 @@
 """
-Patient Payments page.
+Patient Payments.
 
 Pay an outstanding invoice with a validated payment method (card / UPI / cash),
 then track every transaction with clear pending / paid / failed states.
 Payment processing is simulated backend-side.
+
+Rendered standalone (``render``) and as a section of the consolidated
+Appointments hub (``render_content``).
 """
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, privacy_banner, empty_state
+from frontend.components.ui import page_slice
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import status_pill, format_datetime, display_api_error
 from frontend.api.services import PaymentService, AppointmentService, CatalogService
@@ -43,6 +47,8 @@ _FILTERS = {
     "Refunded": ("refunded",),
 }
 
+PAGE_SIZE = 10  # transactions per page, applied after the status filter
+
 
 def _payment_reference_error(method: str, value: str):
     """Inline validation for the per-method payment reference."""
@@ -64,6 +70,11 @@ def render():
 
     breadcrumb(["Patient", "Payments"])
     privacy_banner()
+    render_content()
+
+
+def render_content() -> None:
+    """Payment form + transaction list — also used by the Appointments hub."""
     render_flash("payments")
 
     pay_service = PaymentService()
@@ -110,7 +121,7 @@ def render():
         # (consultation charge + prescriptions + diagnostic orders); it is
         # intentionally not client-editable.
         st.caption(
-            f"Billed amount: **INR {default_amount:,.2f}** — "
+            f"Billed amount: **INR {default_amount:,.2f}**, "
             "the payment amount is taken from your visit's invoice "
             "(consultation charge + medicines + diagnostic tests)."
         )
@@ -240,7 +251,10 @@ def render():
     k2.metric("Total settled (INR)", f"{total_paid:,.2f}")
     k3.metric("Pending", sum(1 for p in payments if p.get("status") == "pending"))
 
-    for p in payments:
+    # Page math runs after filtering; the metrics above cover every match.
+    page_rows, _, _ = page_slice(payments, len(payments), PAGE_SIZE, "payments_page")
+
+    for p in page_rows:
         with st.container(border=True):
             col1, col2 = st.columns([3, 1], vertical_alignment="top")
             with col1:

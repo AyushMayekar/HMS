@@ -6,7 +6,6 @@ from __future__ import annotations
 import streamlit as st
 
 from frontend.components.navbar import page_head, breadcrumb
-from frontend.components.ui import recommendation_note
 from frontend.components.analytics import (
     department_selector,
     view_by_range_control,
@@ -17,6 +16,7 @@ from frontend.components.analytics import (
     render_booking_channel_analytics,
     render_no_show_analytics,
     render_waiting_time_analytics,
+    render_recommendations,
     guard_response,
 )
 from frontend.utils.session import require_role, current_user
@@ -26,7 +26,7 @@ from frontend.api.analytics_services import AnalyticsService
 def render():
     page_head(
         "Analytics & Insights",
-        "Hospital-wide operational analysis computed live from patient records — "
+        "Hospital-wide operational analysis computed live from patient records. "
         "every section explains what its numbers mean.",
         noindex=True,
     )
@@ -92,7 +92,7 @@ def render_analytics_content() -> None:
                 "Patient flow",
                 y_label="Patient visits (total per period)",
                 explanation=(
-                    "Patient visits recorded on the days inside each period, summed per period — "
+                    "Patient visits recorded on the days inside each period, summed per period, "
                     "use it to see when the hospital is busiest."
                 ),
             )
@@ -113,7 +113,7 @@ def render_analytics_content() -> None:
                 "Bed demand",
                 y_label="Beds demanded (total per period)",
                 explanation=(
-                    "Recorded next-day bed demand summed across the days inside each period — "
+                    "Recorded next-day bed demand summed across the days inside each period, "
                     "use it to see when bed pressure is highest."
                 ),
             )
@@ -183,7 +183,7 @@ def render_analytics_content() -> None:
         else:
             render_waiting_time_analytics(res.data or {})
 
-    recommendation_note("Recommendations")
+    render_recommendations("Recommendations")
 
 
 if __name__ == "__main__":

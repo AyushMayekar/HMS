@@ -23,7 +23,7 @@ DESCRIPTION_MAX = 2000  # keeps the query-string payload well within server limi
 def render():
     page_head(
         "Support Requests",
-        "Raise and track administrative requests — refunds, billing disputes, medical records, and more.",
+        "Raise and track administrative requests: refunds, billing disputes, medical records, and more.",
         noindex=True,
     )
     require_role(["patient"])

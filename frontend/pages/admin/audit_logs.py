@@ -3,22 +3,26 @@ Admin Audit Logs page (§25.3).
 
 Read-only viewer for the hospital audit trail exposed by
 ``GET /admin/audit-logs`` via ``AuditLogService().list(limit, offset)``.
-Entries are loaded newest-first in pages; filters are applied client-side to
-the loaded entries. No record is ever invented — an empty backend shows an
-honest empty state.
+Entries are loaded newest-first in batches; filters are applied client-side to
+the loaded entries and the filtered result is then paginated, so every row is
+a collapsible bar with a details drawer. No record is ever invented — an empty
+backend shows an honest empty state.
 """
 from __future__ import annotations
 
+import html
 import json
 
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, empty_state
+from frontend.components.ui import expandable_row, loading, page_slice
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error, format_datetime
 from frontend.api.staff_admin_services import AuditLogService
 
-PAGE_SIZE = 25
+PAGE_SIZE = 25          # batch fetched from the API per Load more
+AUDIT_PAGE_SIZE = 12    # rows shown per page in the viewer
 
 BUFFER_KEY = "admin_audit_buffer"
 TOTAL_KEY = "admin_audit_total"
@@ -80,32 +84,62 @@ def _details_text(details) -> str:
         return str(details)
 
 
-def _render_log_row(log: dict) -> None:
+_STATUS_BADGES = {
+    "success": ("mc-pill-success", "Success"),
+    "failure": ("mc-pill-danger", "Failed"),
+    "failed": ("mc-pill-danger", "Failed"),
+    "error": ("mc-pill-danger", "Error"),
+}
+
+
+def _status_badge(status) -> str | None:
+    """Outcome badge for the collapsed bar (never raw technical text)."""
+    if not status:
+        return None
+    key = str(status).strip().lower()
+    css_class, label = _STATUS_BADGES.get(
+        key, ("mc-pill-neutral", str(status).replace("_", " ").strip().title())
+    )
+    return f'<span class="mc-pill {css_class}">{html.escape(label)}</span>'
+
+
+def _log_row_id(log: dict, index: int) -> str:
+    """Stable, unique id for a row's expand state (audit_id is a UUID)."""
+    return str(log.get("audit_id") or f"audit-entry-{index}")
+
+
+def _render_details(log: dict) -> None:
+    """Detail drawer shown inside the expanded row."""
+    details = log.get("details")
+    if details in (None, "", {}):
+        st.caption("No extra details were recorded with this entry.")
+        return
+    with st.expander("Details"):
+        if isinstance(details, dict):
+            st.json(details)
+        else:
+            st.text(_details_text(details))
+
+
+def _render_log_row(row_id: str, log: dict) -> None:
     action = str(log.get("action") or "—")
     entity_type = str(log.get("entity_type") or "—")
     entity_id = log.get("entity_id")
     created_at = log.get("created_at") or log.get("timestamp")
 
-    with st.container(border=True):
-        c1, c2, c3 = st.columns([2.4, 1.8, 1.6])
-        with c1:
-            st.write(f"**{action}**")
-            st.caption(format_datetime(created_at))
-        with c2:
-            st.caption("Entity")
-            st.write(entity_type)
-            st.caption(f"ID: {str(entity_id) if entity_id else '—'}")
-        with c3:
-            st.caption("Actor")
-            st.write(_actor_label(log))
-
-        details = log.get("details")
-        if details not in (None, "", {}):
-            with st.expander("Details"):
-                if isinstance(details, dict):
-                    st.json(details)
-                else:
-                    st.text(_details_text(details))
+    # Collapsed bar: action + time, actor and entity on consistent meta lines,
+    # outcome badge on the right — identical structure for every row.
+    expandable_row(
+        row_id,
+        title=action,
+        meta=format_datetime(created_at),
+        meta_lines=[
+            f"Actor: {_actor_label(log)}",
+            f"Entity: {entity_type} · {str(entity_id) if entity_id else '—'}",
+        ],
+        badge_html=_status_badge(log.get("status")),
+        actions=lambda: _render_details(log),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +149,7 @@ def _render_log_row(log: dict) -> None:
 def render():
     page_head(
         "Audit Logs",
-        "Every privileged action recorded by the hospital platform — who did what, and when.",
+        "Every privileged action recorded by the hospital platform: who did what, and when.",
         noindex=True,
     )
     require_role(["admin"])
@@ -127,7 +161,8 @@ def render():
 
     # First load (subsequent loads happen via Refresh / Load more).
     if BUFFER_KEY not in st.session_state:
-        _load(service, offset=0, replace=True)
+        with loading("Loading the audit trail"):
+            _load(service, offset=0, replace=True)
 
     load_error = st.session_state.get(ERROR_KEY)
     if load_error is not None:
@@ -135,8 +170,9 @@ def render():
 
     section_title(
         "Audit Trail",
-        f"Entries are loaded newest-first in pages of {PAGE_SIZE}. Action and entity "
-        "filters apply to the entries already loaded on this page.",
+        f"Entries arrive newest-first in batches of {PAGE_SIZE}; use Load more for "
+        "older ones. The action and entity filters, and the paging below, apply to "
+        "the entries already loaded.",
     )
 
     logs = st.session_state.get(BUFFER_KEY) or []
@@ -162,7 +198,8 @@ def render():
             disabled=not has_more or load_error is not None,
             help=f"Load the next {PAGE_SIZE} entries.",
         ):
-            _load(service, offset=len(logs), replace=False)
+            with loading("Loading older entries"):
+                _load(service, offset=len(logs), replace=False)
             st.rerun()
     with b3:
         if isinstance(total, int):
@@ -189,13 +226,13 @@ def render():
         if action_filter != "All" or entity_filter != "All":
             st.caption(f"Showing {len(filtered)} of {len(logs)} loaded entries after filters.")
 
-    # ---------- List / empty states ----------
+    # ---------- Paged list / empty states ----------
     if not logs:
         if load_error is None:
             empty_state(
                 "No audit logs recorded yet.",
-                "Privileged actions — account changes, catalog edits, knowledge updates "
-                "— will appear here as they happen."
+                "Privileged actions (account changes, catalog edits, knowledge updates)"
+                " will appear here as they happen."
             )
         return
 
@@ -206,8 +243,16 @@ def render():
         )
         return
 
-    for log in filtered:
-        _render_log_row(log)
+    # Paginate AFTER filtering so counts and page maths match what is shown;
+    # the page key includes the active filters so a filter change never lands
+    # on a stale page of the previous result set.
+    entries = [(_log_row_id(log, i), log) for i, log in enumerate(filtered)]
+    page_key = f"al_page::{action_filter}::{entity_filter}"
+    page_rows, _offset, _limit = page_slice(
+        entries, len(entries), AUDIT_PAGE_SIZE, page_key
+    )
+    for row_id, log in page_rows:
+        _render_log_row(row_id, log)
 
 
 if __name__ == "__main__":

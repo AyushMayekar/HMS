@@ -51,26 +51,161 @@ def render_navbar(
     else:
         links = [_details(x) for x in (public_nav or [])]
         if login_page:
-            links.append((login_page, "Sign In", ":material/login:"))
+            links.append((login_page, "Sign In / Sign Up", ":material/login:"))
+
+    # The brand mark (icon + wordmark) already routes to home, so drop any
+    # "Home" entry from the link row to avoid a duplicate way to get there.
+    links = [item for item in links if (item[1] or "").strip().lower() != "home"]
 
     registry = st.session_state.get("_mc_pages", {}) or {}
     home = home_page or registry.get("home")
 
+    # White navbar, black text, centered links, thin light-green border
+    # underneath — matching the flat white navbar style referenced (brand
+    # mark left, links centered, account control right). Sticky-pinned to
+    # the top of the viewport so it stays visible while scrolling.
+    st.markdown(
+        """
+        <style>
+        div.st-key-mc_main_nav {
+            background: #FFFFFF !important;
+            border: none !important;
+            border-bottom: 3px solid rgba(134, 239, 172, 0.9) !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            padding: 0.7rem 1rem !important;
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 999 !important;
+            overflow: visible;
+        }
+        div.st-key-mc_main_nav [data-testid="stCaption"],
+        div.st-key-mc_main_nav [data-testid="stCaption"] span {
+            color: #000000 !important;
+        }
+        div.st-key-mc_main_nav [data-testid="stPageLink-NavLink"] {
+            color: #000000 !important;
+            font-weight: 600 !important;
+            justify-content: center !important;
+        }
+        div.st-key-mc_main_nav [data-testid="stPageLink-NavLink"] span {
+            color: #000000 !important;
+        }
+        div.st-key-mc_main_nav [data-testid="stPageLink-NavLink"]:hover {
+            background: rgba(134, 239, 172, 0.2) !important;
+        }
+        /* Brand mark: icon + wordmark, capped small enough to sit fully
+           inside the navbar's own padding, vertically centered. */
+        div.st-key-mc_brand {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+        }
+        div.st-key-mc_brand div[data-testid="stVerticalBlock"] {
+            display: flex;
+            align-items: center;
+        }
+        div.st-key-mc_brand button {
+            background: transparent !important;
+            border: 1px solid transparent !important;
+            box-shadow: none !important;
+            padding: 0.15rem 0.4rem !important;
+            margin: 0 !important;
+            color: #000000 !important;
+            min-width: auto !important;
+            width: auto !important;
+            height: 1.9rem !important;
+            min-height: 1.9rem !important;
+            max-height: 1.9rem !important;
+            line-height: 1 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            gap: 0.3rem;
+        }
+        div.st-key-mc_brand button p {
+            font-size: 0.92rem !important;
+            font-weight: 800 !important;
+            color: #000000 !important;
+            margin: 0 !important;
+            line-height: 1 !important;
+            white-space: nowrap;
+        }
+        div.st-key-mc_brand button span[data-testid="stIconMaterial"] {
+            font-size: 1.15rem !important;
+            color: #000000 !important;
+            line-height: 1 !important;
+        }
+        div.st-key-mc_brand button:hover {
+            background: rgba(134, 239, 172, 0.25) !important;
+        }
+        /* Account chip wrapper: same flex-centering treatment as mc_brand,
+           so the user-menu chip aligns on the same baseline as the brand
+           mark and nav links instead of drifting from default widget
+           spacing (Streamlit's element-container margins).
+
+           Both wrappers below must declare `flex-direction: row`. Streamlit's
+           stVerticalBlock defaults to `column`, and on a column axis
+           `justify-content: flex-end` means BOTTOM, not right — which is what
+           pushed the avatar ~18px below the nav baseline. On the row axis the
+           same two declarations give exactly the intended result: right-hand
+           edge (main) + dead-centre vertically (cross). `height: 100%` on the
+           inner block guarantees the free space that centring needs. */
+        div.st-key-mc_account {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: flex-end !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        div.st-key-mc_account div[data-testid="stVerticalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: flex-end !important;
+            height: 100% !important;
+            gap: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        /* The trigger's own wrappers must not contribute spacing either —
+           any margin here inflates the box and re-offsets the centre. */
+        div.st-key-mc_account div[data-testid="stButton"],
+        div.st-key-mc_account div[data-testid="stPopover"] {
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+        }
+        div.st-key-mc_account div[data-testid="stVerticalBlockBorderWrapper"],
+        div.st-key-mc_account div[data-testid="stElementContainer"] {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: auto !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     with st.container(key="mc_main_nav"):
         brand, nav, account = st.columns(
-            [0.9, 8.6, 1.1],
+            # nav gets the larger share so the longest label ("Management")
+            # fits its equal-width column instead of being sliced at the edge.
+            [1.6, 7.1, 1.0],
             vertical_alignment="center",
             gap="small",
         )
 
-        # Brand mark: icon only, always routes to home.
+        # Brand mark: icon + wordmark, always routes to home.
         with brand:
             with st.container(key="mc_brand"):
                 if st.button(
-                    "",
+                    "Meridian Care",
                     key="mc_brand_btn",
                     icon=":material/local_hospital:",
-                    help=f"{HOSPITAL.short_name} — go to the home page",
+                    help=f"{HOSPITAL.short_name}. Go to the home page",
                 ):
                     if home is not None:
                         st.switch_page(home)
@@ -93,26 +228,16 @@ def render_navbar(
             if authenticated:
                 from frontend.components.ui import user_menu
 
-                user_menu(
-                    profile_page=profile_page,
-                    login_page=login_page,
-                    home_page=home,
-                )
+                with st.container(key="mc_account"):
+                    user_menu(
+                        profile_page=profile_page,
+                        login_page=login_page,
+                        home_page=home,
+                    )
 
     # Trust strip: plain text only (no OS emojis) so it renders identically
     # on Windows and Linux, and without the portal-labelling text.
-    st.markdown(
-        f"""
-        <div class="mc-trust-strip" role="complementary" aria-label="Care information">
-            <span>Secure, role-based access</span>
-            <span>Emergency {HOSPITAL.emergency}</span>
-            <span>{HOSPITAL.care_desk}</span>
-            <span>Walk-ins welcome at the care desk</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+  
 
 def render_footer(footer_pages: dict = None) -> None:
     """
@@ -127,16 +252,23 @@ def render_footer(footer_pages: dict = None) -> None:
 
     pages = footer_pages or st.session_state.get("_mc_footer_pages") or {}
 
+    # The footer's glass styling is injected globally by theme.inject_base_css()
+    # — it is deliberately NOT emitted here. A render-time <style> only exists
+    # for the run that emitted it, so any run where this function did not reach
+    # its body left the old navy fallback in theme.py as the only rule.
     from datetime import datetime
 
     year = datetime.now().year
 
     # A keyed st.container genuinely wraps the columns in the DOM, so the
-    # navy surface sits behind every footer element (an open/close <div>
+    # glass surface sits behind every footer element (an open/close <div>
     # across separate markdown blocks does NOT wrap in Streamlit).
     with st.container(key="mc_footer"):
+        # 4th column carries no content (the bottom bar spans the full width
+        # on its own); its weight is only there to keep the original layout
+        # rhythm. Support is widened so "Privacy & Terms" is not clipped.
         brand_col, explore_col, support_col, notice_col = st.columns(
-            [2.0, 1.1, 1.1, 2.0],
+            [2.0, 1.1, 1.6, 1.5],
             gap="large",
         )
 
@@ -184,23 +316,11 @@ def render_footer(footer_pages: dict = None) -> None:
                 else:
                     st.caption(fallback)
 
-        with notice_col:
-            st.markdown(
-                f"""
-                <div class="mc-footer-notice">
-                    <p class="mc-footer-heading">About this platform</p>
-                    <p class="mc-footer-meta">{HOSPITAL.disclaimer}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
         st.markdown(
             f"""
             <div class="mc-footer-bottom">
                 <span>&copy; {year} {HOSPITAL.name}</span>
                 <span>Care desk: {HOSPITAL.phone} &middot; Emergency: {HOSPITAL.emergency}</span>
-                <span>Not a clinical decision-support system</span>
             </div>
             """,
             unsafe_allow_html=True,

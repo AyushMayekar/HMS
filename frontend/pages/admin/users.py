@@ -12,7 +12,7 @@ import re
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, empty_state
-from frontend.components.ui import pagination
+from frontend.components.ui import field_error, pagination
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error, status_pill, format_datetime
 from frontend.api.staff_admin_services import AdminUserService
@@ -35,11 +35,23 @@ PHONE_CHARS_RE = re.compile(r"^[0-9+\-\s]+$")
 CREATE_FLASH_KEY = "admin_create_staff_flash"
 LIST_FLASH_KEY = "admin_users_flash"
 ATTEMPT_KEY = "admin_create_staff_attempted"
+# Fields the admin actually edited — inline errors stay hidden until a field
+# has been touched or the form was submitted (same pattern as login.py).
+TOUCHED_KEY = "_cu_touched"
 
 
 # ---------------------------------------------------------------------------
 # Inline validation helpers
 # ---------------------------------------------------------------------------
+
+def _touch(field_key: str) -> None:
+    st.session_state.setdefault(TOUCHED_KEY, set())
+    st.session_state[TOUCHED_KEY].add(field_key)
+
+
+def _is_touched(field_key: str) -> bool:
+    return field_key in st.session_state.get(TOUCHED_KEY, set())
+
 
 def _name_error(value: str, required: bool) -> str | None:
     name = (value or "").strip()
@@ -108,7 +120,7 @@ def _change_summary(changes: dict) -> str:
 def render():
     page_head(
         "User Management",
-        "Govern accounts across the hospital — roles, status, and staff provisioning.",
+        "Govern accounts across the hospital: roles, status, and staff provisioning.",
         noindex=True,
     )
     require_role(["admin"])
@@ -140,7 +152,7 @@ def _render_create(service: AdminUserService) -> None:
     section_title(
     "Provision a Hospital Account",
     "Create staff, doctor, or administrator accounts. The new user signs in "
-    "with an 8-digit code sent to their email — no password is set here.",
+    "with an 8-digit code sent to their email, no password is set here.",
     )
 
     # Success state (persists until dismissed) with the real returned profile.
@@ -169,7 +181,10 @@ def _render_create(service: AdminUserService) -> None:
     if st.session_state.pop("_cu_clear_fields", False):
         for widget_key in ("cu_name", "cu_email", "cu_phone"):
             st.session_state.pop(widget_key, None)
+        # Fresh form: forget which fields were touched so no error shows early.
+        st.session_state.pop(TOUCHED_KEY, None)
 
+    # Show an inline error only once the field was touched or on submit.
     attempted = bool(st.session_state.get(ATTEMPT_KEY, False))
 
     full_name = st.text_input(
@@ -177,29 +192,32 @@ def _render_create(service: AdminUserService) -> None:
         key="cu_name",
         placeholder="e.g. S. Raman",
         help="At least 2 characters.",
+        on_change=lambda: _touch("cu_name"),
     )
-    err = _name_error(full_name, attempted)
-    if err:
-        st.error(err)
+    err = _name_error(full_name, required=True)
+    if err and (_is_touched("cu_name") or attempted):
+        field_error(err)
 
     email = st.text_input(
         "Work email",
         key="cu_email",
         placeholder="staff@meridiancare.health",
+        on_change=lambda: _touch("cu_email"),
     )
-    err = _email_error(email, attempted)
-    if err:
-        st.error(err)
+    err = _email_error(email, required=True)
+    if err and (_is_touched("cu_email") or attempted):
+        field_error(err)
 
     phone = st.text_input(
         "Phone (optional)",
         key="cu_phone",
         placeholder="+91 98xxxxxxx0",
         help="7–15 digits; only digits, +, - and spaces.",
+        on_change=lambda: _touch("cu_phone"),
     )
     err = _phone_error(phone)
-    if err:
-        st.error(err)
+    if err and (_is_touched("cu_phone") or attempted):
+        field_error(err)
 
     role = st.selectbox(
         "Account role",
@@ -241,8 +259,8 @@ def _render_create(service: AdminUserService) -> None:
             st.session_state[CREATE_FLASH_KEY] = {
                 "message": (
                     f"Account created for {display_name} ({display_email}). "
-                    "They can now sign in with the 8-digit code sent to their email "
-                    "— no password is required."
+                    "They can now sign in with the 8-digit code sent to their email"
+                    ", no password is required."
                 ),
                 "profile": profile,
             }
@@ -260,7 +278,7 @@ def _render_create(service: AdminUserService) -> None:
 def _render_list(service: AdminUserService) -> None:
     section_title(
         "Accounts",
-        "Search, filter, and manage every registered account — change roles and "
+        "Search, filter, and manage every registered account, change roles and "
         "status with a confirmation step.",
     )
 
@@ -408,7 +426,7 @@ def _render_user_row(u: dict, service: AdminUserService) -> None:
                         result = service.update(user_id, **pending)
                         if result.success:
                             st.session_state[LIST_FLASH_KEY] = (
-                                f"Updated {name} — {_change_summary(pending)}."
+                                f"Updated {name}: {_change_summary(pending)}."
                             )
                             st.session_state.pop(pending_key, None)
                             st.rerun()

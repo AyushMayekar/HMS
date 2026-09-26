@@ -20,7 +20,7 @@ RESOLVED_STATUSES = ("completed", "cancelled", "no_show")
 def render():
     page_head(
         "Clinic Desk",
-        "Your profile and today's assigned patients — start the consultation from the visit card.",
+        "Your profile and today's assigned patients, start the consultation from the visit card.",
         noindex=True,
     )
     require_role(["doctor"])
@@ -43,7 +43,7 @@ def render():
 
     with st.container(border=True):
         st.write(
-            f"**Dr. {profile.get('full_name') or doctor.get('full_name') or 'Doctor'}** · "
+            f"**{profile.get('full_name') or doctor.get('full_name') or 'Doctor'}** · "
             f"{doctor.get('specialization') or 'General Medicine'} · "
             f"{department.get('name') or 'Department not set'}"
         )

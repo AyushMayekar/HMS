@@ -150,7 +150,7 @@ def agent_chat_with_confirmation(
     # Show confirmation dialog if pending
     if state["pending_confirmation"]:
         st.divider()
-        st.warning("**Confirmation required** — please confirm or cancel below.")
+        st.warning("**Confirmation required**, please confirm or cancel below.")
         st.markdown(state["pending_summary"])
 
         col1, col2 = st.columns(2)

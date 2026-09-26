@@ -203,7 +203,23 @@ def login_user(
 
 
 def logout() -> None:
-    """Log out the current user."""
+    """Log out the current user.
+
+    Best effort server-side revoke: the token is read BEFORE local state is
+    cleared, and any transport failure is swallowed — signing out of this
+    device must never be blocked by the API being unreachable. The local
+    session is cleared either way, so the UX is identical with or without
+    the backend endpoint.
+    """
+    token = get_access_token()
+    if token:
+        try:
+            # Imported lazily: frontend.api.client imports this module.
+            from frontend.api.auth_services import AuthService
+
+            AuthService().logout()
+        except Exception:
+            pass
     clear_auth_state()
 
 

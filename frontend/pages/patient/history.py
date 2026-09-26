@@ -1,14 +1,23 @@
 """
-Patient Appointment History page.
+Patient Appointment History.
+
+Rendered standalone (``render``) and as a section of the consolidated
+Appointments hub (``render_content``), the same split used by Administration
+› Management.
 """
+from datetime import datetime
+
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, privacy_banner, empty_state
+from frontend.components.ui import page_slice
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import status_pill, format_datetime, display_api_error
 from frontend.api.services import AppointmentService, CatalogService
 from frontend.config import APPOINTMENT_STATUSES
 from frontend.pages.patient._helpers import build_doctor_map, doctor_display, short_id
+
+PAGE_SIZE = 10  # history records per page, applied after the status filter
 
 
 def render():
@@ -22,12 +31,16 @@ def render():
 
     breadcrumb(["Patient", "History"])
     privacy_banner()
+    render_content()
 
+
+def render_content() -> None:
+    """Timeline of past visits — also used by the consolidated Appointments page."""
     service = AppointmentService()
     res = service.list(limit=200)
     if not res.success:
         display_api_error(res)
-        st.stop()
+        return
 
     appointments = res.data or []
 
@@ -56,20 +69,23 @@ def render():
 
     section_title(f"{len(appointments)} record(s)", "Sorted newest first")
 
-    # Group by year/month for a timeline feel
-    buckets: dict[str, list] = {}
-    for appt in sorted(
+    # Newest first, then paginate — page math always runs after filtering.
+    appointments = sorted(
         appointments,
         key=lambda a: str(a.get("scheduled_start") or ""),
         reverse=True,
-    ):
+    )
+    page_rows, _, _ = page_slice(appointments, len(appointments), PAGE_SIZE, "history_page")
+
+    # Group the current page by year/month for a timeline feel
+    buckets: dict[str, list] = {}
+    for appt in page_rows:
         start = appt.get("scheduled_start") or ""
         month_key = start[:7] if start else "Unknown"
         buckets.setdefault(month_key, []).append(appt)
 
     for month_key, group in buckets.items():
         try:
-            from datetime import datetime
             label = datetime.strptime(month_key, "%Y-%m").strftime("%B %Y")
         except ValueError:
             label = month_key

@@ -2,8 +2,10 @@
 Authentication API routes.
 OTP-based login and signup via Supabase Auth.
 """
+import httpx
 from fastapi import APIRouter, Request, status
 
+from app.config.settings import get_settings
 from app.schema.auth import (
     RequestOTPRequest,
     VerifyOTPRequest,
@@ -128,6 +130,45 @@ def verify_signup_otp_endpoint(payload: VerifySignupOTPRequest, request: Request
                 "expires_at": session.expires_at,
             },
         },
+    }
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def logout(request: Request):
+    """Revoke the caller's Supabase session.
+
+    Access tokens are stateless JWTs and cannot be revoked before they expire,
+    so this invalidates the session's *refresh* token (scope=global) instead —
+    that is what stops a signed-out session being renewed.
+
+    Always reports success: the frontend clears its own session state
+    independently, so an unreachable Supabase never blocks signing out.
+    """
+    request_id = request.state.request_id
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
+
+    revoked = False
+    if token:
+        try:
+            settings = get_settings()
+            if settings.supabase_url:
+                httpx.post(
+                    f"{settings.supabase_url.rstrip('/')}/auth/v1/logout",
+                    params={"scope": "global"},
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10.0,
+                )
+                revoked = True
+        except Exception:
+            # Best effort — local sign-out must never depend on this.
+            revoked = False
+
+    return {
+        "success": True,
+        "message": "You have been signed out.",
+        "request_id": request_id,
+        "data": {"revoked": revoked},
     }
 
 

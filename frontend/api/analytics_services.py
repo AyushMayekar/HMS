@@ -16,6 +16,7 @@ from frontend.api.endpoints import (
     ANALYTICS_NO_SHOW_RISK,
     ANALYTICS_PATIENT_FLOW,
     ANALYTICS_PATIENT_FLOW_DEPT,
+    ANALYTICS_RECOMMENDATION,
     ANALYTICS_SATISFACTION,
     ANALYTICS_WAITING_TIME,
     PREDICTIONS_BED_DEMAND,
@@ -150,6 +151,23 @@ class AnalyticsService:
         if department_id:
             params["department_id"] = department_id
         return self.client.get(ANALYTICS_WAITING_TIME, params=params)
+
+    def recommendation(self, days: int = 30) -> APIResponse:
+        """Get short business-value recommendations for the current window.
+
+        The backend turns the same analytics (plus the near-term forecasts)
+        into 3-6 operational bullets with the configured LLM, so this call
+        runs with the longer agent timeout. When no model is configured the
+        response still succeeds with ``data.source == "unavailable"`` and an
+        empty ``bullets`` list — callers fall back to the neutral placeholder.
+        """
+        from frontend.config import CONFIG
+
+        return self.client.post(
+            ANALYTICS_RECOMMENDATION,
+            json_data={"days": days},
+            timeout=CONFIG.agent_timeout,
+        )
 
 
 class PredictionsService:

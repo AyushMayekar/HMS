@@ -12,7 +12,7 @@ from frontend.config import HOSPITAL
 def render() -> None:
     page_head(
         "Contact Us",
-        f"Reach the {HOSPITAL.short_name} care team — every channel below goes "
+        f"Reach the {HOSPITAL.short_name} care team, every channel below goes "
         "directly to our hospital.",
     )
 
@@ -41,7 +41,7 @@ def render() -> None:
         with st.container(border=True):
             st.markdown("#### :material/emergency: Emergency")
             st.write(f"**{HOSPITAL.emergency}**")
-            st.caption("For medical emergencies — 24 hours a day, 7 days a week.")
+            st.caption("For medical emergencies: 24 hours a day, 7 days a week.")
 
     st.divider()
 
@@ -60,12 +60,12 @@ def render() -> None:
         )
         st.write(
             "**Online:** sign in to the patient portal to book, reschedule, or cancel "
-            "appointments, view payments, track requests, and send feedback — without "
+            "appointments, view payments, track requests, and send feedback, without "
             "calling."
         )
         st.write(
             "**Planning a visit:** the Departments page lists every department, its "
-            "services, and its specialists — open to everyone, no account needed."
+            "services, and its specialists, open to everyone, no account needed."
         )
 
     registry = st.session_state.get("_mc_pages", {}) or {}
@@ -79,7 +79,7 @@ def render() -> None:
                 width="stretch",
             )
         else:
-            st.caption("You're signed in — use the navigation above to open your portal.")
+            st.caption("You're signed in, use the navigation above to open your portal.")
     with link_cols[1]:
         st.page_link(
             registry.get("departments") or "pages/public/departments.py",
@@ -95,7 +95,7 @@ def render() -> None:
             width="stretch",
         )
 
-    st.caption(HOSPITAL.disclaimer)
+
 
 
 if __name__ == "__main__":

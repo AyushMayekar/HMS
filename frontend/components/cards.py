@@ -159,13 +159,8 @@ def appointment_card(
         ):
             st.caption(f"Estimated wait: {wait_min:.0f} min")
 
-        # No-show risk: percentage with an explicit label.
-        risk = appointment.get("no_show_probability")
-        if risk is not None:
-            try:
-                st.caption(f"No-show risk: {float(risk):.0%}")
-            except (TypeError, ValueError):
-                st.caption(f"No-show risk: {risk}")
+        # No-show predictions are owned by the Staff Reminders page (the single
+        # prediction + reminder workflow) — never duplicated on a card.
 
         if show_actions:
             appt_id = appointment.get("appointment_id")
@@ -189,8 +184,12 @@ def appointment_card(
                         st.session_state[f"{key_prefix}_cancel_target"] = appt_id
                         st.rerun()
             else:
-                # Staff actions
-                if status in ("booked", "confirmed") and not past:
+                # Staff actions. Check-in is the front desk's card duty, and
+                # it stops the moment the visit is checked in — no buttons
+                # after that. Start / End Service belongs to the clinician, so
+                # it lives only on the doctor's Consultations page and is
+                # never duplicated here.
+                if status in ("booked", "confirmed") and not past and not checked_in:
                     if st.button(
                         "Check In",
                         key=f"{key_prefix}_checkin_{appt_id}",
@@ -199,24 +198,11 @@ def appointment_card(
                     ):
                         st.session_state[f"{key_prefix}_checkin_target"] = appt_id
                         st.rerun()
-                elif status == "arrived":
-                    if st.button(
-                        "Start Service",
-                        key=f"{key_prefix}_start_{appt_id}",
-                        type="primary",
-                        width="stretch",
-                    ):
-                        st.session_state[f"{key_prefix}_start_target"] = appt_id
-                        st.rerun()
-                elif status == "in_consultation":
-                    if st.button(
-                        "End Service",
-                        key=f"{key_prefix}_end_{appt_id}",
-                        type="primary",
-                        width="stretch",
-                    ):
-                        st.session_state[f"{key_prefix}_end_target"] = appt_id
-                        st.rerun()
+                elif checked_in:
+                    st.caption(
+                        "This visit is with the clinical team. "
+                        "Lifecycle actions continue on Consultations."
+                    )
 
 
 def payment_card(payment: dict, key_prefix: str = "pay") -> None:
@@ -265,7 +251,6 @@ def request_card(request: dict, key_prefix: str = "req") -> None:
             status = request.get("status", "unknown")
             status_pill(status)
 
-
 def doctor_card(doctor: dict) -> None:
     """Descriptive doctor card: real specialization, experience,
     department and status from the catalog payload (never invented)."""
@@ -276,9 +261,9 @@ def doctor_card(doctor: dict) -> None:
     status = doctor.get("status") or "active"
 
     with st.container(border=True):
-        head_left, head_right = st.columns([4, 1], vertical_alignment="top")
+        head_left, head_right = st.columns([3, 1.3], vertical_alignment="top")
         with head_left:
-            st.markdown(f"**Dr. {name}**")
+            st.markdown(f"**{name}**")
             st.caption(spec)
         with head_right:
             status_pill(status)
@@ -295,14 +280,9 @@ def doctor_card(doctor: dict) -> None:
         if qual:
             st.write(qual)
 
-
 def department_card(dept: dict, view_details_page: Optional[str] = None) -> None:
     """Descriptive department card: name, description, extra information
-    and status — all from real backend data.
-
-    ``view_details_page`` optionally adds a "View details" link to a page
-    path (e.g. ``"pages/public/departments.py"``).
-    """
+    and status — all from real backend data."""
     import html as _html
 
     name = dept.get("name") or "Unknown department"
@@ -310,17 +290,30 @@ def department_card(dept: dict, view_details_page: Optional[str] = None) -> None
     info = dept.get("information") or ""
     status = dept.get("status") or "active"
 
-    with st.container(border=True):
-        head_left, head_right = st.columns([4, 1], vertical_alignment="top")
+    with st.container(
+        border=True,
+        key=f"mc_dept_card_{dept.get('department_id') or name}",
+    ):
+        head_left, head_right = st.columns(
+            [3, 1.3],
+            vertical_alignment="top",
+        )
+
         with head_left:
             st.markdown(f"**{name}**")
-            if desc:
-                st.write(desc)
+
         with head_right:
             status_pill(status)
 
+        if desc:
+            st.markdown(
+                f'<p class="mc-clamp-3">{_html.escape(desc)}</p>',
+                unsafe_allow_html=True,
+            )
+
         if info:
-            st.caption(_html.unescape(info) if "&" in info else info)
+            clean_info = _html.unescape(info) if "&" in info else info
+            st.caption(clean_info)
 
         if view_details_page:
             st.page_link(
@@ -328,8 +321,6 @@ def department_card(dept: dict, view_details_page: Optional[str] = None) -> None
                 label="View details",
                 icon=":material/arrow_forward:",
             )
-
-
 def slot_card(
     slot: dict,
     doctor: dict = None,

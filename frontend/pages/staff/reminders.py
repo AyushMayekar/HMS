@@ -19,7 +19,7 @@ from __future__ import annotations
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, empty_state
-from frontend.components.ui import loading
+from frontend.components.ui import loading, page_slice
 from frontend.components.analytics import (
     RISK_BAND_LEGEND,
     RISK_SCORE_LEGEND,
@@ -31,7 +31,6 @@ from frontend.api.analytics_services import PredictionsService
 
 REMINDER_TYPES = {
     "in_app": "In-app notification",
-    "email": "Email",
 }
 
 REMINDER_HOURS_BEFORE = 24.0  # fixed 24-hour reminder model
@@ -44,6 +43,11 @@ MAX_NO_SHOW_BATCH = 10
 
 # Visits above this likelihood are listed first in the table.
 FLAG_THRESHOLD = 0.30
+
+# Rows shown per page in the eligibility table (page math runs after the
+# 24-hour window filter above, never before it).
+PAGE_SIZE = 10
+PAGE_KEY = "staff_reminders_page"
 
 FLASH_KEY = "staff_reminder_flash"
 PREDICT_FLASH_KEY = "staff_reminders_predict_flash"
@@ -63,7 +67,7 @@ def _empty_selection() -> dict:
 def render():
     page_head(
         "Reminders",
-        "Identify no-show risk, run the 24-hour prediction, then send reminders — one workflow.",
+        "Identify no-show risk, run the 24-hour prediction, then send reminders, one workflow.",
         noindex=True,
     )
     require_role(["staff"])
@@ -111,7 +115,7 @@ def render():
     else:
         tolerance_text = f"±{int(tolerance)} min"
     st.info(
-        "Nothing is predicted while this page loads — scores are only produced when you "
+        "Nothing is predicted while this page loads, scores are only produced when you "
         "press **Predict Selected**. "
         f"Window: {window_start} – {window_end} UTC ({tolerance_text}); "
         f"up to {max_batch} appointments per action."
@@ -120,31 +124,36 @@ def render():
     if not appointments:
         empty_state(
             "No appointments fall inside the 24-hour scoring window right now.",
-            "Appointments become eligible once they are about 24 hours away — "
-            "refresh this page in a few minutes.",
+            "Appointments become eligible once they are about 24 hours away. "
+            "Refresh this page in a few minutes.",
         )
         return
 
     rows, row_ids = build_table_rows(appointments)
     has_model_scores = any(a.get("no_show_probability") is not None for a in appointments)
 
+    # Pagination is the last step, after the 24-hour window filter above, so
+    # the table, the index-based selection and both actions share one page.
+    page_rows, page_offset, page_limit = page_slice(rows, len(rows), PAGE_SIZE, PAGE_KEY)
+    page_row_ids = row_ids[page_offset:page_offset + page_limit]
+
     # Row selection is index-based: clear it whenever the displayed order changes.
-    if st.session_state.get(TABLE_ORDER_KEY) != row_ids:
-        st.session_state[TABLE_ORDER_KEY] = row_ids
+    if st.session_state.get(TABLE_ORDER_KEY) != page_row_ids:
+        st.session_state[TABLE_ORDER_KEY] = page_row_ids
         st.session_state[SELECTION_KEY] = _empty_selection()
 
     if st.button(
         f"Select visible (up to {max_batch})",
         key="rem_select_visible",
         icon=":material/checklist:",
-        help=f"Selects the first {max_batch} rows shown in the table.",
+        help=f"Selects the first {max_batch} rows shown on this page of the table.",
     ):
         st.session_state[SELECTION_KEY] = {
-            "selection": {"rows": list(range(min(max_batch, len(rows)))), "columns": [], "cells": []}
+            "selection": {"rows": list(range(min(max_batch, len(page_rows)))), "columns": [], "cells": []}
         }
 
-    selected_rows = render_appointment_table(rows, has_model_scores=has_model_scores)
-    selected_ids = [row_ids[i] for i in selected_rows if 0 <= i < len(row_ids)]
+    selected_rows = render_appointment_table(page_rows, has_model_scores=has_model_scores)
+    selected_ids = [page_row_ids[i] for i in selected_rows if 0 <= i < len(page_row_ids)]
     selected_count = len(selected_ids)
     over_limit = selected_count > max_batch
 
@@ -257,7 +266,7 @@ def render_predict_action(predictions, selected_ids: list[str], *, max_batch: in
     """The single primary prediction action."""
     section_title(
         "Predict",
-        "Score the selected appointments — nothing runs automatically and there is no "
+        "Score the selected appointments. Nothing runs automatically and there is no "
         "Predict All; the backend caps every action at "
         f"{max_batch} appointments.",
     )
@@ -290,7 +299,7 @@ def render_predict_action(predictions, selected_ids: list[str], *, max_batch: in
     executed = payload.get("executed") or []
     failed = payload.get("failed") or []
 
-    success = f"Scored {len(executed)} appointment(s) — the table now shows the new predictions."
+    success = f"Scored {len(executed)} appointment(s), the table now shows the new predictions."
     if not executed and not failed:
         success = "No predictions were returned for the selected appointments."
     error = None

@@ -126,7 +126,7 @@ def _schedule_error(
     last_day = start_date + timedelta(days=int(days) - 1)
     if last_day > date.today() + timedelta(days=29):
         return (
-            "Slots must fit inside the 30-day booking window — "
+            "Slots must fit inside the 30-day booking window, "
             "reduce the number of days or pick an earlier start date."
         )
 
@@ -136,7 +136,7 @@ def _schedule_error(
 def render():
     page_head(
         "Doctors",
-        "Manage clinician records — the team that patients book appointments with.",
+        "Manage clinician records, the team that patients book appointments with.",
         noindex=True,
     )
     require_role(["admin"])
@@ -365,7 +365,7 @@ def render_content() -> None:
                 if result.success:
                     raw = result.raw if isinstance(result.raw, dict) else {}
                     summary = raw.get("slot_summary") or {}
-                    message = f"Dr. {full_name.strip()} added to {dept_pick}."
+                    message = f"{full_name.strip()} added to {dept_pick}."
                     if summary.get("created"):
                         message += f" {summary['created']} slots created"
                         if summary.get("start_date"):
@@ -451,7 +451,7 @@ def _render_doctor_row(
     with st.container(border=True):
         col1, col2, col3 = st.columns([2.6, 1.6, 1])
         with col1:
-            st.write(f"**Dr. {doc.get('full_name')}**")
+            st.write(f"**{doc.get('full_name')}**")
             st.caption(f"{doc.get('specialization')} · {doc.get('experience_years')} yrs experience")
             st.caption(
                 f"Updated {format_datetime(doc.get('updated_at') or doc.get('created_at'))}"
@@ -539,7 +539,7 @@ def _render_doctor_row(
                     else:
                         result = service.update(doctor_id, **payload)
                         if result.success:
-                            st.session_state[EDIT_FLASH_KEY] = f"Dr. {clean_name} updated."
+                            st.session_state[EDIT_FLASH_KEY] = f"{clean_name} updated."
                             st.rerun()
                         else:
                             display_api_error(result)

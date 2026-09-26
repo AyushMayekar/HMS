@@ -121,7 +121,9 @@ class AdminUserService:
         if role:
             params["role"] = role
         if status:
-            params["status_filter"] = status
+            # The backend route declares Query(alias="status"), so the wire name
+            # must be "status" — sending "status_filter" is silently ignored.
+            params["status"] = status
         return self.client.get(ADMIN_USERS_LIST, params=params)
 
     def get(self, user_id: str) -> APIResponse:

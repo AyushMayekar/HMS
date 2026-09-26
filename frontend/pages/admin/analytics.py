@@ -19,7 +19,7 @@ def render():
     page_head(
         "Hospital Analytics",
         "Operational metrics across appointments, flow, billing, satisfaction, and "
-        "ML risk — every section explains what its numbers mean.",
+        "ML risk. Every section explains what its numbers mean.",
         noindex=True,
     )
     require_role(["admin"])

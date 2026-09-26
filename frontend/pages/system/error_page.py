@@ -14,7 +14,7 @@ def render():
         <div style="text-align:center; padding:1rem 1rem 3rem 1rem;">
             <h2 style="color: var(--mc-navy);">Unexpected Error</h2>
             <p style="color: var(--mc-muted);">
-                We couldn't complete your request. Please try again — if the problem
+                We couldn't complete your request. Please try again, if the problem
                 persists, contact the care desk with the details shown below.
             </p>
         </div>

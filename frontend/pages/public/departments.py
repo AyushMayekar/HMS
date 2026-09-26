@@ -9,6 +9,7 @@ from frontend.components.navbar import page_head, section_title, empty_state
 from frontend.config import HOSPITAL
 from frontend.api.services import CatalogService
 from frontend.components.cards import department_card, doctor_card
+from frontend.components.ui import loading
 from frontend.utils.states import display_api_error
 
 
@@ -27,13 +28,13 @@ def render() -> None:
     page_head(
         "Our Departments",
         "Browse every clinical department, the services it provides, and the specialists "
-        "who work in it — no sign-in required.",
+        "who work in it, no sign-in required.",
     )
 
     catalog = CatalogService()
 
     # ---------------- Departments ----------------
-    with st.spinner("Loading departments..."):
+    with loading("Loading departments..."):
         dept_res = catalog.departments()
 
     if not dept_res.success:
@@ -42,7 +43,7 @@ def render() -> None:
             "Departments are unavailable right now",
             "Please try again in a moment.",
         )
-        st.caption(HOSPITAL.disclaimer)
+
         return
 
     departments = dept_res.data or []
@@ -51,11 +52,11 @@ def render() -> None:
             "No departments published yet",
             "Department information will appear here as soon as it is available.",
         )
-        st.caption(HOSPITAL.disclaimer)
+
         return
 
     # ---------------- Specialists ----------------
-    with st.spinner("Loading specialists..."):
+    with loading("Loading specialists..."):
         doctor_res = catalog.doctors()
     doctors = list(doctor_res.data or []) if doctor_res.success else []
 
@@ -149,7 +150,6 @@ def render() -> None:
             )
             _card_grid(shown, doctor_card)
 
-    st.caption(HOSPITAL.disclaimer)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,11 @@
 """
-Staff Appointments (Operations) page.
+Staff Appointments (Operations) content.
+
+The list itself (filters, rows, Check In / No-Show) lives here and is shared: ``render()`` keeps this file usable as a standalone
+page, while ``render_content()`` is what the merged Staff Operations page
+(``staff/dashboard.py``) renders inside its radio switch — the same pattern
+admin Management uses. Both surfaces therefore run the same API calls through
+one row renderer instead of two near-copies.
 """
 from __future__ import annotations
 
@@ -8,10 +14,11 @@ from datetime import timedelta
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, empty_state
-from frontend.components.ui import doctor_label, expandable_row, loading, pagination
+from frontend.components.ui import doctor_label, expandable_row, loading, page_slice
 from frontend.components.analytics import (
     department_selector,
     extract_predicted_wait,
+    get_predicted_wait,
     hospital_now,
     is_scheduled_in_past,
     parse_timestamp,
@@ -34,9 +41,10 @@ RESOLVED_STATUSES = ("completed", "cancelled", "no_show")
 
 
 def render():
+    """Standalone page entry — kept for direct navigation and page links."""
     page_head(
         "Appointment Operations",
-        "Check patients in, run the visit lifecycle, and flag no-shows — with full patient, doctor, and department details.",
+        "Check patients in, run the visit lifecycle, and flag no-shows, with full patient, doctor, and department details.",
         noindex=True,
     )
     require_role(["staff"])
@@ -44,22 +52,38 @@ def render():
 
     breadcrumb(["Staff", "Appointments"])
 
-    # ---------- Feedback from the previous action ----------
-    flash = st.session_state.pop(FLASH_KEY, None)
-    if flash:
-        st.success(flash.get("message", "Action completed."))
-        if flash.get("wait_minutes") is not None:
-            with st.container(border=True):
-                wc1, wc2 = st.columns([1, 3])
-                with wc1:
-                    st.metric("Predicted waiting time", f"{round(flash['wait_minutes'])} min")
-                with wc2:
-                    st.caption(
-                        f"Estimated wait after check-in for {flash.get('patient', 'the patient')}, "
-                        "returned by the check-in service. It also appears on today's visit cards "
-                        "while the visit is still active."
-                    )
+    render_flash()
+    render_content()
 
+
+def render_flash() -> None:
+    """Success feedback from the previous check-in / lifecycle action."""
+    flash = st.session_state.pop(FLASH_KEY, None)
+    if not flash:
+        return
+    message = flash.get("message", "Action completed.") if isinstance(flash, dict) else str(flash)
+    st.success(message)
+    if not isinstance(flash, dict) or flash.get("wait_minutes") is None:
+        return
+    with st.container(border=True):
+        wc1, wc2 = st.columns([1, 3])
+        with wc1:
+            st.metric("Predicted waiting time", f"{round(flash['wait_minutes'])} min")
+        with wc2:
+            st.caption(
+                f"Estimated wait after check-in for {flash.get('patient', 'the patient')}, "
+                "returned by the check-in service. It also appears on today's visit cards "
+                "while the visit is still active."
+            )
+
+
+def render_content() -> None:
+    """Filters plus the paginated appointment list — no page chrome.
+
+    Rendered by this file's own ``render()`` and by the merged Staff
+    Operations page, so there is exactly one staff list, one row renderer and
+    one set of lifecycle actions behind both entry points.
+    """
     # ---------- Filters ----------
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -110,10 +134,37 @@ def render():
         f"{len(appointments)} appointment(s)",
         "Soonest first. Open a row to see the check-in actions.",
     )
+    render_paginated_rows(appointments, service, page_key=PAGE_KEY)
 
-    offset, limit = pagination(len(appointments), PAGE_SIZE, PAGE_KEY)
-    for a in appointments[offset:offset + limit]:
-        render_operation_row(a, service)
+
+def render_paginated_rows(
+    rows: list[dict],
+    service: StaffAppointmentService,
+    *,
+    page_key: str,
+    group_by_department: bool = False,
+) -> None:
+    """Render ``rows`` one page at a time through the shared operation row.
+
+    The page math is the last step, after every status / department / date /
+    "today" filter has been applied, so the "showing x–y of z" bar always
+    describes the filtered result set. When ``group_by_department`` is set the
+    current page is grouped under a department heading before rendering.
+    """
+    page_rows, _offset, _limit = page_slice(rows, len(rows), PAGE_SIZE, page_key)
+
+    if not group_by_department:
+        for a in page_rows:
+            render_operation_row(a, service)
+        return
+
+    grouped: dict[str, list[dict]] = {}
+    for a in page_rows:
+        grouped.setdefault(a.get("department_name") or "Unassigned department", []).append(a)
+    for dept in sorted(grouped):
+        section_title(dept, f"{len(grouped[dept])} visit(s) in this department on this page.")
+        for a in grouped[dept]:
+            render_operation_row(a, service)
 
 
 def matches_date_filter(a: dict, date_filter: str) -> bool:
@@ -157,45 +208,60 @@ def render_operation_row(a: dict, service: StaffAppointmentService) -> None:
         extra_bits.append(str(a.get("patient_email")))
     if a.get("reason"):
         extra_bits.append(str(a.get("reason")))
-    if checked_in:
-        queue = a.get("patients_ahead_at_checkin")
-        queue_text = f", {queue} patient(s) ahead" if queue is not None else ""
-        extra_bits.append(f"Checked in at {format_datetime(a.get('actual_checkin_time'))}{queue_text}")
-    if service_started:
-        extra_bits.append(f"Service started at {format_datetime(a.get('actual_service_start'))}")
-    if service_ended:
-        extra_bits.append(f"Service ended at {format_datetime(a.get('actual_service_end'))}")
     if status == "booked" and not checked_in and not past and a.get("predicted_wait_minutes") is not None:
         extra_bits.append(f"Estimated wait at booking: {round(a['predicted_wait_minutes'])} min")
     if extra_bits:
         meta = f"{meta} · " + " · ".join(extra_bits)
 
+    # Lifecycle timestamps each get their own line instead of being
+    # " · "-joined onto the summary line.
+    meta_lines = []
+    if checked_in:
+        queue = a.get("patients_ahead_at_checkin")
+        queue_text = f", {queue} patient(s) ahead" if queue is not None else ""
+        meta_lines.append(f"Checked in at {format_datetime(a.get('actual_checkin_time'))}{queue_text}")
+        if status != "completed":
+            wait = extract_predicted_wait(a)
+            if wait is None:
+                wait = get_predicted_wait(appointment_id)
+            if wait is not None:
+                meta_lines.append(f"Predicted wait {round(wait)} min")
+    if service_started:
+        meta_lines.append(f"Service started at {format_datetime(a.get('actual_service_start'))}")
+    if service_ended:
+        meta_lines.append(f"Service ended at {format_datetime(a.get('actual_service_end'))}")
+
     def actions():
         if resolved:
-            st.caption("This visit is resolved — no actions are available.")
+            st.caption("This visit is resolved, no actions are available.")
             return
+
+        # The front desk's job ends at check-in: once a visit is checked in it
+        # shows no buttons at all, only context — Start / End Service is the
+        # clinician's action and lives on the doctor's Consultations page.
+        can_checkin = status == "booked" and not checked_in and not past
+        can_no_show = status == "booked" and not checked_in and not past
 
         confirm_id = st.session_state.get(CONFIRM_KEY)
         if confirm_id is not None and str(confirm_id) == str(appointment_id):
-            render_checkin_confirmation(a, service, patient)
-            return
+            if can_checkin:
+                render_checkin_confirmation(a, service, patient)
+                return
+            # Prompt left over from an earlier click — drop it rather than
+            # offer Confirm / Cancel on a visit that is already checked in.
+            st.session_state.pop(CONFIRM_KEY, None)
 
-        can_checkin = status == "booked" and not checked_in and not past
-        can_no_show = status == "booked" and not checked_in and not past
-        can_start = checked_in and not service_started
-        can_end = service_started and not service_ended
-
-        if not actions_available(can_checkin, can_no_show, can_start, can_end):
-            if status == "booked" and not checked_in and past:
+        if not actions_available(can_checkin, can_no_show):
+            if checked_in:
+                st.caption("This visit is with the clinical team. Lifecycle actions continue on Consultations.")
+            elif status == "booked" and past:
                 st.caption(
-                    "The scheduled time has passed — check-in and no-show actions are "
+                    "The scheduled time has passed. Check-in and no-show actions are "
                     "no longer available for this visit."
                 )
-            elif checked_in:
-                st.caption("This visit is with the clinical team — lifecycle actions continue on the Clinic Desk.")
             return
 
-        cols = st.columns(4, gap="small")
+        cols = st.columns(2, gap="small")
         with cols[0]:
             if st.button(
                 "Check In",
@@ -214,37 +280,20 @@ def render_operation_row(a: dict, service: StaffAppointmentService) -> None:
                 disabled=not can_no_show,
             ):
                 run_action(service.mark_no_show, a, f"{patient} marked as no-show.")
-        with cols[2]:
-            if st.button(
-                "Start Service",
-                key=f"op_start_{appointment_id}",
-                type="primary",
-                width="stretch",
-                disabled=not can_start,
-            ):
-                run_action(service.start_service, a, f"Service started for {patient}.")
-        with cols[3]:
-            if st.button(
-                "End Service",
-                key=f"op_end_{appointment_id}",
-                type="primary",
-                width="stretch",
-                disabled=not can_end,
-            ):
-                run_action(service.end_service, a, f"Service ended for {patient}.")
 
     expandable_row(
         str(appointment_id),
         title=f"{patient} · {a.get('department_name') or 'Department not set'}",
         meta=meta,
+        meta_lines=meta_lines,
         pill=status or "unknown",
         id_text=f"Appointment {appointment_id}",
         actions=actions,
     )
 
 
-def actions_available(can_checkin: bool, can_no_show: bool, can_start: bool, can_end: bool) -> bool:
-    return bool(can_checkin or can_no_show or can_start or can_end)
+def actions_available(can_checkin: bool, can_no_show: bool) -> bool:
+    return bool(can_checkin or can_no_show)
 
 
 def render_checkin_confirmation(a: dict, service: StaffAppointmentService, patient: str) -> None:

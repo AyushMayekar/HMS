@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 from frontend.api.client import APIResponse, get_api_client
 from frontend.api.endpoints import (
+    AUTH_LOGOUT,
     AUTH_ME,
     AUTH_REQUEST_OTP,
     AUTH_SIGNUP,
@@ -57,3 +58,7 @@ class AuthService:
     def get_me(self) -> APIResponse:
         """Get current user profile."""
         return self.client.get(AUTH_ME)
+
+    def logout(self) -> APIResponse:
+        """Revoke the current session server-side (refresh token)."""
+        return self.client.post(AUTH_LOGOUT)

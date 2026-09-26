@@ -45,7 +45,7 @@ def doctor_display(doctor_map: dict, doctor_id: Optional[str], specialization: b
     name = doc.get("full_name")
     if not name:
         return "Doctor"
-    label = f"Dr. {name}"
+    label = f"{name}"
     if specialization and doc.get("specialization"):
         label += f" · {doc['specialization']}"
     return label
@@ -164,7 +164,7 @@ def show_booking_wait_preview(
         elif label:
             st.caption(label)
     elif insufficient:
-        st.info(f"{label or 'Not enough data yet'} — {basis}".rstrip(" —"))
+        st.info(f"{label or 'Not enough data yet'}: {basis}".rstrip(" :"))
     elif label:
         st.info(label)
     elif basis:

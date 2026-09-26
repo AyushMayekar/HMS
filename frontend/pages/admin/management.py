@@ -20,7 +20,7 @@ from frontend.pages.admin import doctors as doctors_page
 SECTIONS = {
     "Users": (
         users_page,
-        "Accounts across the hospital — roles, status, and staff provisioning.",
+        "Accounts across the hospital: roles, status, and staff provisioning.",
     ),
     "Departments": (
         departments_page,
@@ -28,7 +28,7 @@ SECTIONS = {
     ),
     "Doctors": (
         doctors_page,
-        "Clinician records — the team that patients book appointments with.",
+        "Clinician records, the team that patients book appointments with.",
     ),
 }
 

@@ -109,13 +109,15 @@ def display_api_error(response: APIResponse) -> None:
 
 def display_exception_error(exc: Exception, context: str = "") -> None:
     """Display a user-friendly error for an unexpected exception."""
+    # Friendly message first, technical detail one click away — same order as
+    # display_api_error so every error surface reads the same way.
+    st.error("Something went wrong. Please try again or contact support if the problem persists.")
+
     with st.expander("Error Details", expanded=False):
         st.code(f"Exception: {type(exc).__name__}")
         st.code(f"Message: {str(exc)}")
         if context:
             st.code(f"Context: {context}")
-
-    st.error("Something went wrong. Please try again or contact support if the problem persists.")
 
 
 def show_loading(message: str = "Loading...") -> None:

@@ -9,6 +9,7 @@ AUTH_REQUEST_OTP = "/auth/request-otp"
 AUTH_VERIFY_OTP = "/auth/verify-otp"
 AUTH_SIGNUP = "/auth/signup"
 AUTH_VERIFY_SIGNUP_OTP = "/auth/verify-signup-otp"
+AUTH_LOGOUT = "/auth/logout"
 AUTH_ME = "/users/me"
 
 # Catalog (read-only reference data)
@@ -94,6 +95,7 @@ ANALYTICS_SATISFACTION = "/analytics/satisfaction"
 ANALYTICS_BOOKING_CHANNEL = "/analytics/booking-channel"
 ANALYTICS_NO_SHOW = "/analytics/no-show"
 ANALYTICS_WAITING_TIME = "/analytics/waiting-time"
+ANALYTICS_RECOMMENDATION = "/analytics/recommendation"
 
 # Predictions
 PREDICTIONS_NO_SHOW = "/predictions/no-show/{appointment_id}"

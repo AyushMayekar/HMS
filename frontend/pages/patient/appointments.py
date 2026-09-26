@@ -1,9 +1,17 @@
 """
-Patient Appointments page.
+Patient Appointments page — the consolidated patient hub.
 
-Step-by-step booking (department -> doctor -> date -> slot) with the backend's
-expected waiting time shown at slot selection, prominent appointment IDs after
-booking, and descriptive reschedule/cancel flows.
+One page now hosts the four patient experiences that used to be separate
+``st.Page`` entries: booking / management (this module) plus History, Payments
+and Feedback. A horizontal section radio — the same pattern as Administration
+› Management — renders either this module's own ``render_content()`` or the
+section module's ``render_content()``, so every action, API call and
+``require_role`` guard stays exactly where it was.
+
+Section changes requested from *below* the radio (the appointment-row buttons
+"Give feedback" / "Pay invoice", or a dashboard deep link) are queued in
+``PENDING_SECTION_KEY`` and applied before the radio widget is created,
+because a widget key may not be mutated after instantiation.
 """
 import streamlit as st
 from datetime import datetime, timedelta
@@ -14,11 +22,14 @@ from frontend.components.billing import (
     render_diagnostic_orders_table,
     render_prescriptions_table,
 )
-from frontend.components.ui import date_chips, expandable_row, loading
+from frontend.components.ui import date_chips, expandable_row, loading, page_slice
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import status_pill, format_datetime, display_api_error
 from frontend.api.services import AppointmentService, CatalogService
 from frontend.config import APPOINTMENT_STATUSES
+from frontend.pages.patient import feedback as feedback_module
+from frontend.pages.patient import history as history_module
+from frontend.pages.patient import payments as payments_module
 from frontend.pages.patient._helpers import (
     build_doctor_map,
     doctor_display,
@@ -36,28 +47,74 @@ REASON_MAX = 500        # backend BookAppointmentRequest.reason limit
 CANCEL_REASON_MAX = 255  # backend PatientCancelRequest.reason limit
 PENDING_PAYMENT_STATES = (None, "pending", "unpaid")
 
+UPCOMING_PAGE_SIZE = 5   # expandable appointment rows per page
+PAST_PAGE_SIZE = 10      # past rows per page inside the Past Appointments expander
 
-def _init_booking_state() -> None:
-    """Ensure booking workflow keys exist."""
-    st.session_state.setdefault("booking_dept", None)
-    st.session_state.setdefault("booking_doctor_id", None)
-    st.session_state.setdefault("booking_date", None)
-    st.session_state.setdefault("booking_slot_id", None)
-    st.session_state.setdefault("booking_reason", "")
+# Section switcher: widget key + the queue used to change it from code that
+# runs after the radio has already been instantiated in the current run.
+SECTION_KEY = "patient_hub_section"
+PENDING_SECTION_KEY = "_patient_hub_section_pending"
+
+# ``module is None`` means the hub renders its own booking/management content.
+SECTIONS = {
+    "Appointments": (
+        None,
+        "Book a visit, manage upcoming appointments, and reschedule or cancel when plans change.",
+    ),
+    "History": (
+        history_module,
+        "A complete record of your visits, cancellations, and consultations.",
+    ),
+    "Payments": (
+        payments_module,
+        "View your invoices and make secure payments for consultations.",
+    ),
+    "Feedback": (
+        feedback_module,
+        "Share how your visit went, your input helps us improve care.",
+    ),
+}
 
 
-def _reset_selection(include_doctor: bool = False) -> None:
-    """Clear date/slot (and optionally doctor) after an upstream change."""
-    st.session_state["booking_date"] = None
-    st.session_state["booking_slot_id"] = None
-    if include_doctor:
-        st.session_state["booking_doctor_id"] = None
+# =====================================================================
+# Section switching
+# =====================================================================
+def request_section(section: str) -> None:
+    """Select another section of THIS page on the next run.
+
+    Used by widgets rendered below the radio (appointment-row buttons): the
+    radio's key cannot be written once the widget exists, so the request is
+    queued and applied at the top of the next run.
+    """
+    if section in SECTIONS:
+        st.session_state[PENDING_SECTION_KEY] = section
+    st.rerun()
 
 
+def open_section(section: str) -> None:
+    """Jump into this hub from another page (e.g. the dashboard) on a section."""
+    if section in SECTIONS:
+        st.session_state[PENDING_SECTION_KEY] = section
+    st.switch_page("pages/patient/appointments.py")
+
+
+def _apply_pending_section() -> None:
+    """Consume a queued section request before the radio widget is created."""
+    pending = st.session_state.pop(PENDING_SECTION_KEY, None)
+    if pending in SECTIONS:
+        st.session_state[SECTION_KEY] = pending
+
+
+# =====================================================================
+# Page
+# =====================================================================
 def render():
+    _apply_pending_section()
+
     page_head(
         "Appointments",
-        "Book a visit, manage upcoming appointments, and reschedule or cancel when plans change.",
+        "Book a visit, manage upcoming appointments, and review your history, "
+        "payments and feedback without leaving the page.",
         noindex=True,
     )
     require_role(["patient"])
@@ -67,6 +124,24 @@ def render():
     privacy_banner()
     render_flash("appointments")
 
+    choice = st.radio(
+        "Section",
+        list(SECTIONS.keys()),
+        key=SECTION_KEY,
+        horizontal=True,
+        help="Switch between appointments, history, payments and feedback in one page.",
+    )
+
+    module, blurb = SECTIONS[choice]
+    section_title(choice, blurb)
+    if module is None:
+        render_content()
+    else:
+        module.render_content()
+
+
+def render_content() -> None:
+    """Booking + management content for the hub's own Appointments section."""
     appt_service = AppointmentService()
     catalog = CatalogService()
 
@@ -89,23 +164,10 @@ def render():
     st.divider()
 
     # =================================================================
-    # MY APPOINTMENTS (single experience: booking, history, feedback, payment)
+    # MY APPOINTMENTS (History / Payments / Feedback are the other sections
+    # selected with the control at the top of this page)
     # =================================================================
-    section_title("My Appointments", "Reschedule or cancel only if you are sure — the original slot may be released.")
-
-    registry = st.session_state.get("_mc_pages", {}) or {}
-    link_targets = [
-        (registry.get("patient_history"), "History"),
-        (registry.get("patient_feedback"), "Feedback"),
-        (registry.get("patient_payments"), "Payments"),
-    ]
-    if any(t[0] is not None for t in link_targets):
-        link_cols = st.columns(len(link_targets), gap="small")
-        for col, (page, label) in zip(link_cols, link_targets):
-            if page is None:
-                continue
-            with col:
-                st.page_link(page, label=label, width="stretch")
+    section_title("My Appointments", "Reschedule or cancel only if you are sure, the original slot may be released.")
 
     appts_res = appt_service.list(limit=100)
     if not appts_res.success:
@@ -123,9 +185,10 @@ def render():
 
     if not upcoming:
         empty_state("No upcoming appointments.", "Use Book New Appointment above to reserve a slot.", icon="")
-
-    for a in upcoming:
-        render_appointment_row(a, doctor_map, key_prefix="up")
+    else:
+        page_rows, _, _ = page_slice(upcoming, len(upcoming), UPCOMING_PAGE_SIZE, "hub_upcoming_page")
+        for a in page_rows:
+            render_appointment_row(a, doctor_map, key_prefix="up")
 
     reschedule_target = st.session_state.get("reschedule_target")
     if reschedule_target:
@@ -138,8 +201,26 @@ def render():
     # Past appointments
     if past:
         with st.expander(f"Past Appointments ({len(past)})"):
-            for a in past[:20]:
+            past_rows, _, _ = page_slice(past, len(past), PAST_PAGE_SIZE, "hub_past_page")
+            for a in past_rows:
                 render_appointment_row(a, doctor_map, key_prefix="past", actions=False)
+
+
+def _init_booking_state() -> None:
+    """Ensure booking workflow keys exist."""
+    st.session_state.setdefault("booking_dept", None)
+    st.session_state.setdefault("booking_doctor_id", None)
+    st.session_state.setdefault("booking_date", None)
+    st.session_state.setdefault("booking_slot_id", None)
+    st.session_state.setdefault("booking_reason", "")
+
+
+def _reset_selection(include_doctor: bool = False) -> None:
+    """Clear date/slot (and optionally doctor) after an upstream change."""
+    st.session_state["booking_date"] = None
+    st.session_state["booking_slot_id"] = None
+    if include_doctor:
+        st.session_state["booking_doctor_id"] = None
 
 
 # =====================================================================
@@ -265,10 +346,10 @@ def _render_slot_selection(
     appt_service,
 ) -> None:
     """Descriptive slot cards, waiting-time preview, summary, and confirm."""
-    st.markdown(f"**4. Choose a Time Slot — {selected_date.strftime('%A, %d %B %Y')}**")
+    st.markdown(f"**4. Choose a Time Slot: {selected_date.strftime('%A, %d %B %Y')}**")
 
     if not slots:
-        st.info("All slots for this date are taken — please choose another date.")
+        st.info("All slots for this date are taken, please choose another date.")
         return
 
     slot_cols = st.columns(min(2, len(slots)), gap="medium")
@@ -379,13 +460,12 @@ def render_appointment_row(a: dict, doctor_map: dict, key_prefix: str = "appt", 
     meta = f"{format_datetime(a.get('scheduled_start'))} · {doctor_display(doctor_map, a.get('doctor_id'))}"
 
     def actions_body() -> None:
-        registry = st.session_state.get("_mc_pages", {}) or {}
-
-        # Completed visit: feedback and payment entry points.
+        # Completed visit: feedback and payment entry points. Both now live in
+        # another section of this same page, so they select it instead of
+        # navigating to a separate page.
         if is_completed:
             c1, c2 = st.columns(2, gap="small")
             with c1:
-                feedback_page = registry.get("patient_feedback")
                 if st.button(
                     "Give feedback",
                     key=f"{key_prefix}_fb_{appointment_id}",
@@ -393,12 +473,8 @@ def render_appointment_row(a: dict, doctor_map: dict, key_prefix: str = "appt", 
                     type="primary" if not unpaid else "secondary",
                     width="stretch",
                 ):
-                    if feedback_page is not None:
-                        st.switch_page(feedback_page)
-                    else:
-                        st.switch_page("pages/patient/feedback.py")
+                    request_section("Feedback")
             with c2:
-                payments_page = registry.get("patient_payments")
                 if st.button(
                     "Pay invoice" if unpaid else "View payments",
                     key=f"{key_prefix}_pay_{appointment_id}",
@@ -406,14 +482,11 @@ def render_appointment_row(a: dict, doctor_map: dict, key_prefix: str = "appt", 
                     type="primary" if unpaid else "secondary",
                     width="stretch",
                 ):
-                    if payments_page is not None:
-                        st.switch_page(payments_page)
-                    else:
-                        st.switch_page("pages/patient/payments.py")
+                    request_section("Payments")
             if unpaid:
                 st.caption(
-                    "This visit has an outstanding invoice — the payment page has it "
-                    "pre-selected."
+                    "This visit has an outstanding invoice, the Payments section "
+                    "has it listed below."
                 )
         elif status in ("booked", "confirmed"):
             c1, c2 = st.columns(2, gap="small")

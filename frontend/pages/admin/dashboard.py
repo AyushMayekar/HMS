@@ -28,7 +28,7 @@ def _as_list(data, key: str) -> list:
 def render():
     page_head(
         "Admin Overview",
-        "Hospital-wide governance — usage, users, departments and doctors.",
+        "Hospital-wide governance: usage, users, departments and doctors.",
         noindex=True,
     )
     require_role(["admin"])
@@ -40,7 +40,7 @@ def render():
 
     # ---------- KPI row ----------
     section_title(
-        "Hospital Performance — Last 30 Days",
+        "Hospital Performance: Last 30 Days",
         "Live operational metrics for the rolling 30-day window across every department.",
     )
     appt_res = analytics.appointments(days=30)
@@ -91,13 +91,6 @@ def render():
         c3.metric("Staff", sum(1 for u in users if isinstance(u, dict) and u.get("role") == "staff"))
         c4.metric("Departments", len(departments))
         c5.metric("Doctors", len(doctors))
-
-        st.page_link(
-            "pages/admin/audit_logs.py",
-            label="Audit logs",
-            icon=":material/receipt_long:",
-            help="Review the hospital-wide audit trail of privileged actions.",
-        )
 
     st.divider()
 

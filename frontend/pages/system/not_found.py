@@ -12,7 +12,7 @@ def render():
     st.markdown(
         """
         <div style="text-align:center; padding:1rem 1rem 3rem 1rem;">
-            <h2 style="color: var(--mc-navy);">404 — Page Not Found</h2>
+            <h2 style="color: var(--mc-navy);">404: Page Not Found</h2>
             <p style="color: var(--mc-muted);">
                 The link may be outdated, or you may not have permission to view this screen.
                 Use the navigation above to continue.

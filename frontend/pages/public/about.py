@@ -84,7 +84,7 @@ def render() -> None:
 
     section_title(
         "Visit & Contact",
-        "Everything you need to reach us — straight from our hospital directory.",
+        "Everything you need to reach us, straight from our hospital directory.",
     )
     col1, col2 = st.columns(2, gap="large")
     with col1:
@@ -99,7 +99,7 @@ def render() -> None:
             st.write(f"**Emergency:** {HOSPITAL.emergency}")
             st.write(f"**Email:** {HOSPITAL.email}")
 
-    st.caption(HOSPITAL.disclaimer)
+
 
 
 if __name__ == "__main__":

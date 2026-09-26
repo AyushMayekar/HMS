@@ -10,6 +10,7 @@ from __future__ import annotations
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, empty_state
+from frontend.components.ui import loading
 from frontend.components.billing import (
     render_billing_summary,
     render_diagnostic_orders_table,
@@ -68,10 +69,11 @@ def render_visit_list(service: DoctorService) -> None:
         key="doctor_appt_status",
     )
 
-    res = service.appointments(
-        status=status_filter if status_filter != "All" else None,
-        limit=200,
-    )
+    with loading("Loading your assigned appointments"):
+        res = service.appointments(
+            status=status_filter if status_filter != "All" else None,
+            limit=200,
+        )
     if not res.success:
         display_api_error(res)
         return
@@ -82,7 +84,7 @@ def render_visit_list(service: DoctorService) -> None:
     if not appointments:
         empty_state(
             "No assigned appointments with this status.",
-            "Adjust the status filter above — new bookings assigned to you appear here.",
+            "Adjust the status filter above, new bookings assigned to you appear here.",
             icon="",
         )
         return
@@ -134,7 +136,8 @@ def render_visit_row(a: dict) -> None:
 
 def render_visit_detail(service: DoctorService, appointment_id: str) -> bool:
     """Full encounter view: state, orders, bill and the available actions."""
-    res = service.get(appointment_id)
+    with loading("Loading this visit"):
+        res = service.get(appointment_id)
     if not res.success:
         display_api_error(res)
         if st.button("Back to list", key="doc_detail_back_error"):
@@ -181,7 +184,7 @@ def render_visit_detail(service: DoctorService, appointment_id: str) -> bool:
     # ---------- Current bill ----------
     section_title(
         "Current Bill",
-        "Consultation charge plus everything prescribed or ordered for this visit — recalculated by the server.",
+        "Consultation charge plus everything prescribed or ordered for this visit, recalculated by the server.",
     )
     render_billing_summary(a.get("billing_summary"))
 
@@ -206,7 +209,7 @@ def render_visit_detail(service: DoctorService, appointment_id: str) -> bool:
 
     if resolved:
         st.info(
-            f"This visit is '{status}' — no further clinical actions are available."
+            f"This visit is '{status}', no further clinical actions are available."
         )
     elif not checked_in:
         st.info("The patient has not been checked in by the front desk yet.")
@@ -233,7 +236,8 @@ def render_visit_detail(service: DoctorService, appointment_id: str) -> bool:
 
 def render_clinical_actions(service: DoctorService, appointment_id: str) -> None:
     """Prescription and diagnostic-order forms for an in-service visit."""
-    med_res = service.medicines()
+    with loading("Loading the medicine catalog"):
+        med_res = service.medicines()
     if not med_res.success:
         display_api_error(med_res)
         return
@@ -241,7 +245,8 @@ def render_clinical_actions(service: DoctorService, appointment_id: str) -> None
     medicine_ids = [m.get("medicine_id") for m in medicines if m.get("medicine_id")]
     medicine_map = {m.get("medicine_id"): m for m in medicines}
 
-    test_res = service.diagnostic_tests()
+    with loading("Loading diagnostic tests"):
+        test_res = service.diagnostic_tests()
     if not test_res.success:
         display_api_error(test_res)
         return

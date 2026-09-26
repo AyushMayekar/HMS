@@ -2,7 +2,7 @@
 Patient AI Assistant page.
 """
 import logging
-
+import streamlit.components.v1 as components
 import streamlit as st
 
 from frontend.components.navbar import page_head, breadcrumb, privacy_banner
@@ -33,6 +33,50 @@ SUGGESTED_PROMPTS = [
 ]
 
 
+def _scroll_chat_to_bottom(container_key: str) -> None:
+    """Force the chat history box to rest scrolled to its newest message.
+
+    CSS-only fixes depend on guessing Streamlit's exact internal DOM
+    structure for a height-bound container, which differs across versions.
+    This runs an actual <script> via components.html (st.markdown strips
+    <script> tags; components.html does not) that reaches
+    window.parent.document, finds the chat box by its key-derived class,
+    and sets scrollTop = scrollHeight directly — no dependency on which
+    nested testid Streamlit happens to use. Retries briefly since the
+    container may render a beat after this runs.
+    """
+    components.html(
+        f"""
+        <script>
+        (function() {{
+            function scrollToBottom() {{
+                try {{
+                    const doc = window.parent.document;
+                    const el = doc.querySelector('div[class*="st-key-{container_key}"]');
+                    if (el) {{
+                        el.scrollTop = el.scrollHeight;
+                        return true;
+                    }}
+                }} catch (e) {{
+                    // Cross-frame access blocked by the host's CSP — nothing
+                    // more this script can do.
+                }}
+                return false;
+            }}
+            let attempts = 0;
+            const interval = setInterval(function() {{
+                attempts += 1;
+                if (scrollToBottom() || attempts > 30) {{
+                    clearInterval(interval);
+                }}
+            }}, 100);
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def render():
     page_head(
         "AI Assistant",
@@ -43,7 +87,7 @@ def render():
     breadcrumb(["Patient", "AI Assistant"])
     privacy_banner(
         "The assistant handles appointments, requests, and general hospital information. "
-        "It does not provide medical advice — clinical questions should be directed to your doctor."
+        "It does not provide medical advice. Clinical questions should be directed to your doctor."
     )
 
     # Per-user conversation thread key (backend threads by user id too)
@@ -71,7 +115,8 @@ def render():
     sentinel = f"agent_offset_{user.user_id}"
 
     # Render chat history up to the latest message
-    chat_container = st.container(height=520, key=f"agent_chat_{user.user_id}")
+    chat_container_key = f"agent_chat_{user.user_id}"
+    chat_container = st.container(height=520, key=chat_container_key)
     with chat_container:
         if not messages:
             st.markdown(
@@ -80,8 +125,8 @@ def render():
                     <div style="font-weight:600;">Hello {user.display_name.split(' ')[0]}</div>
                     <div style="margin-top:0.35rem; font-size:0.95rem;">
                         Ask me anything about your care. I can help you book
-                        appointments, check schedules, and raise administrative requests
-                        — with your explicit confirmation before any action.
+                        appointments, check schedules, and raise administrative requests,
+                        with your explicit confirmation before any action.
                     </div>
                 </div>
                 """,
@@ -92,22 +137,23 @@ def render():
             for msg in messages[start_idx:]:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
+    if messages:
+        _scroll_chat_to_bottom(chat_container_key)
 
-    # Suggestion chips when conversation is empty or short
-    if len(messages) <= 1:
-        st.markdown("**Try asking:**")
-        chip_cols = st.columns(3, gap="small")
-        for idx, (icon, label, prompt) in enumerate(SUGGESTED_PROMPTS):
-            with chip_cols[idx % 3]:
-                if st.button(
-                    label,
-                    key=f"chip_{idx}",
-                    icon=icon,
-                    width="stretch",
-                ):
-                    stream_agent_reply(prompt, messages, thread_key, thread_id_key)
-                    st.rerun()
+    # Suggestion chips remain available throughout the conversation
+    st.markdown("**Try asking:**")
+    chip_cols = st.columns(3, gap="small")
 
+    for idx, (icon, label, prompt) in enumerate(SUGGESTED_PROMPTS):
+        with chip_cols[idx % 3]:
+            if st.button(
+                label,
+                key=f"chip_{idx}",
+                icon=icon,
+                width="stretch",
+            ):
+                stream_agent_reply(prompt, messages, thread_key, thread_id_key)
+                st.rerun()
     # Chat input
     if prompt := st.chat_input("Ask about appointments, departments, billing, or requests…"):
         stream_agent_reply(prompt, messages, thread_key, thread_id_key)

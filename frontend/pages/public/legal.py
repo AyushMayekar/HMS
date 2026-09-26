@@ -93,9 +93,6 @@ def render():
             - Use AI assistant appropriately (no clinical requests)
             - Respect intellectual property
 
-            **5. Medical Disclaimer**
-            {HOSPITAL.disclaimer}
-            
             This platform is for **administrative and informational purposes only**.
             It does not provide medical advice, diagnosis, or treatment.
             Always consult qualified healthcare professionals for medical concerns.
@@ -172,7 +169,6 @@ def render():
             """
         )
 
-    st.caption(HOSPITAL.disclaimer)
 
 
 if __name__ == "__main__":

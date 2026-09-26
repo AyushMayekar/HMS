@@ -99,7 +99,7 @@ def render_content() -> None:
         information = st.text_area(
             "Information for patients",
             key="dept_new_info",
-            placeholder="What patients should know about this department — services, procedures, preparation…",
+            placeholder="What patients should know about this department: services, procedures, preparation…",
             height=140,
             help="Used on the public department page and by the AI assistant. At least 10 characters.",
         )

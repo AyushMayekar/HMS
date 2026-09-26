@@ -28,11 +28,6 @@ class HospitalIdentity:
     care_desk: str = "24×7 Care Desk"
     email: str = "care@meridiancare.health"
     website: str = "https://meridiancare.health"
-    disclaimer: str = (
-        "Meridian Care provides hospital information, appointment management, "
-        "and administrative services. Content on this platform is not a "
-        "substitute for professional medical advice, diagnosis, or treatment."
-    )
     # OS emojis render differently per platform (color on Windows, mono on
     # many Linux setups). The Material shortcode is bundled with Streamlit
     # and renders identically everywhere; logo_emoji is kept only for
@@ -123,8 +118,8 @@ FEEDBACK_CHANNELS = ["form", "email", "in_app", "phone", "kiosk"]
 # Color palette (matching theme.py from streamlit_app_latest2)
 COLORS = {
     "navy": "#0B3C5D",
-    "teal": "#0D9488",
-    "teal_soft": "#E6F7F5",
+    "teal": "#4ADE80",
+    "teal_soft": "#E8FBEF",
     "canvas": "#F4F7FA",
     "surface": "#FFFFFF",
     "text": "#0F172A",

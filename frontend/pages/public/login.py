@@ -54,7 +54,7 @@ def _phone_error(value) -> Optional[str]:
     if not value:
         return "Enter your phone number."
     if not value.isdigit():
-        return "Use digits only — no spaces, dashes, or country code."
+        return "Use digits only: no spaces, dashes, or country code."
     if not 10 <= len(value) <= 15:
         return "Enter a phone number of 10 to 15 digits."
     return None
@@ -90,6 +90,13 @@ def _as_date(raw) -> Optional[date]:
         return raw
     return None
 
+def _touch(field_key: str) -> None:
+    st.session_state.setdefault("_su_touched", set())
+    st.session_state["_su_touched"].add(field_key)
+
+
+def _is_touched(field_key: str) -> bool:
+    return field_key in st.session_state.get("_su_touched", set())
 
 # ---------------------------------------------------------------------------
 # Auth-flow helpers
@@ -148,7 +155,7 @@ def render() -> None:
 
     page_head(
         "Sign In / Sign Up",
-        "Access your patient portal or create a new account — passwordless, using an "
+        "Access your patient portal or create a new account, passwordless, using an "
         f"{CODE_LENGTH}-digit code sent to your email.",
     )
 
@@ -176,7 +183,7 @@ def render_login_signup() -> None:
     with tab1:
         st.write(
             f"Enter the email address registered with us and we'll send an "
-            f"**{CODE_LENGTH}-digit code** — no password to remember."
+            f"**{CODE_LENGTH}-digit code**, no password to remember."
         )
 
         email = st.text_input(
@@ -227,29 +234,36 @@ def render_login_signup() -> None:
 
         with col1:
             full_name = st.text_input(
-                "Full name", key="su_name", placeholder="e.g. Ananya Rao"
+                "Full name",
+                key="su_name",
+                placeholder="e.g. Ananya Rao",
+                on_change=lambda: _touch("name"),
             )
-            err_name = _name_error(full_name) if show_errors else None
-            if err_name:
+            err_name = _name_error(full_name)
+            if err_name and (_is_touched("name") or show_errors):
                 st.warning(err_name)
-
             signup_email = st.text_input(
-                "Email address", key="su_email", placeholder="you@example.com"
+                "Email address",
+                key="su_email",
+                placeholder="you@example.com",
+                on_change=lambda: _touch("email"),
             )
-            err_email = _email_error(signup_email) if show_errors else None
-            if err_email:
+            err_email = _email_error(signup_email)
+            if err_email and (_is_touched("email") or show_errors):
                 st.warning(err_email)
-            else:
+            if not err_email:
                 st.caption(f"We'll email an {CODE_LENGTH}-digit code here to verify it.")
-
             phone = st.text_input(
-                "Phone number", key="su_phone", placeholder="9876543210"
+                "Phone number",
+                key="su_phone",
+                placeholder="9876543210",
+                on_change=lambda: _touch("phone"),
             )
-            err_phone = _phone_error(phone) if show_errors else None
-            if err_phone:
+            err_phone = _phone_error(phone)
+            if err_phone and (_is_touched("phone") or show_errors):
                 st.warning(err_phone)
-            else:
-                st.caption("Digits only — used for appointment and account updates.")
+            if not err_phone:
+                st.caption("Digits only: used for appointment and account updates.")
 
         with col2:
             dob_raw = st.date_input(
@@ -259,19 +273,23 @@ def render_login_signup() -> None:
                 min_value=MIN_DOB,
                 max_value=date.today(),
                 format="YYYY-MM-DD",
-                help="Select your date of birth — it cannot be in the future.",
+                help="Select your date of birth. It cannot be in the future.",
+                on_change=lambda: _touch("dob"),
             )
             dob = _as_date(dob_raw)
-            err_dob = _dob_error(dob) if show_errors else None
-            if err_dob:
+            err_dob = _dob_error(dob)
+            if err_dob and (_is_touched("dob") or show_errors):
                 st.warning(err_dob)
-            else:
-                st.caption("Under 18? A parent or guardian must consent to use this platform.")
+            if not err_dob:
+                st.caption(
+                    "Under 18? A parent or guardian must consent to use this platform."
+                )
 
             gender = st.selectbox(
                 "Gender",
                 ["Male", "Female", "Other", "Prefer not to say"],
                 key="su_gender",
+                on_change=lambda: _touch("gender"),
             )
             st.caption("Used only for your patient profile.")
 
@@ -342,36 +360,26 @@ def render_otp_verification(email: str, is_signup: bool) -> None:
         st.warning(otp_err)
     else:
         st.caption(
-            f"The code is {CODE_LENGTH} digits long. Didn't get it? Check your "
-            "spam folder or resend below."
+            f"The code is {CODE_LENGTH} digits long. Didn't get it? Check your spam folder."
         )
 
+    # "Resend code" removed — this row now holds Verify and Start over,
+    # side by side, in the position the Resend button previously occupied.
     col1, col2 = st.columns(2, gap="medium")
     with col1:
         verify_clicked = st.button(
             verify_label, key="otp_verify", type="primary", width="stretch"
         )
     with col2:
-        resend_clicked = st.button(
-            "Resend code", key="otp_resend", width="stretch"
+        start_over_clicked = st.button(
+            "Start over, sign in again",
+            key="otp_back",
+            width="stretch",
         )
 
-    # on_click callbacks run before the script, so session cleanup here is safe
-    # even though the code input widget was instantiated above.
-    st.button(
-        "Start over — back to Sign In / Sign Up",
-        key="otp_back",
-        width="stretch",
-        on_click=_start_over,
-    )
-
-    if resend_clicked:
-        with st.spinner("Sending a new 8-digit code..."):
-            response = auth.request_otp(email)
-        if response.success:
-            st.success(f"We sent a new {CODE_LENGTH}-digit code to **{email}**.")
-        else:
-            display_api_error(response)
+    if start_over_clicked:
+        _start_over()
+        st.rerun()
 
     if verify_clicked:
         err = _code_error(otp)
@@ -422,9 +430,9 @@ def render_otp_verification(email: str, is_signup: bool) -> None:
         clear_otp_pending()
         st.session_state["_show_welcome_toast"] = True
         if is_signup:
-            st.success("Account created and verified — taking you to your dashboard...")
+            st.success("Account created and verified, taking you to your dashboard...")
         else:
-            st.success("Code verified — signing you in...")
+            st.success("Code verified, signing you in...")
         st.rerun()
 
 

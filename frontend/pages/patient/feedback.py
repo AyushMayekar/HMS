@@ -1,13 +1,17 @@
 """
-Patient Feedback page.
+Patient Feedback.
 
 Rate completed visits (1-5 with an optional comment) and review previously
 submitted feedback. Only completed appointments are eligible — matching the
 backend rule — and duplicate submissions are prevented.
+
+Rendered standalone (``render``) and as a section of the consolidated
+Appointments hub (``render_content``).
 """
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, privacy_banner, empty_state
+from frontend.components.ui import page_slice
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error, format_datetime
 from frontend.api.services import FeedbackService, AppointmentService, CatalogService
@@ -28,6 +32,7 @@ RATING_LABELS = {
 }
 COMMENT_MAX = 1000  # backend SubmitFeedbackRequest.comment limit
 COMMENT_MIN = 3     # inline rule: no one-or-two character comments
+PAGE_SIZE = 10      # feedback entries per page
 
 
 def _rating_markdown(rating: int) -> str:
@@ -40,7 +45,7 @@ def _rating_markdown(rating: int) -> str:
 def render():
     page_head(
         "Feedback",
-        "Share how your visit went — your input helps us improve care.",
+        "Share how your visit went, your input helps us improve care.",
         noindex=True,
     )
     require_role(["patient"])
@@ -48,6 +53,11 @@ def render():
 
     breadcrumb(["Patient", "Feedback"])
     privacy_banner()
+    render_content()
+
+
+def render_content() -> None:
+    """Feedback form + submitted list — also used by the Appointments hub."""
     render_flash("feedback")
 
     feedback_service = FeedbackService()
@@ -98,7 +108,7 @@ def render():
                 format="%d",
                 key="fb_rating",
             ))
-            st.caption(f"{rating}/5 — {RATING_LABELS.get(rating, '')}")
+            st.caption(f"{rating}/5, {RATING_LABELS.get(rating, '')}")
             comment = st.text_area(
                 "Comments (optional)",
                 placeholder="What went well, and what could we improve?",
@@ -148,13 +158,15 @@ def render():
     st.divider()
 
     # ---------- History (read-only) ----------
-    section_title("Your Feedback", "Everything you've shared with us — read-only, one entry per visit.")
+    section_title("Your Feedback", "Everything you've shared with us, read-only, one entry per visit.")
 
     if not feedback_list:
         empty_state("No feedback yet.", "Feedback you submit will appear here.", icon="")
         return
 
-    for f in feedback_list:
+    page_rows, _, _ = page_slice(feedback_list, len(feedback_list), PAGE_SIZE, "feedback_page")
+
+    for f in page_rows:
         with st.container(border=True):
             rating_value = int(f.get("rating", 0) or 0)
             col1, col2 = st.columns([1, 4], vertical_alignment="top")

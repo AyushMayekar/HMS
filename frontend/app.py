@@ -144,14 +144,12 @@ if role == "patient":
         p_dashboard,
         p_appointments,
         p_assistant,
-        p_history,
-        p_payments,
-        p_feedback,
         p_requests,
-        p_profile,
     ]
 elif role == "staff":
-    role_nav = [s_dashboard, s_appointments, s_reminders, s_analytics, s_predictions]
+    # Appointments is merged into the Operations page (staff/dashboard.py),
+    # which renders it as a section — one entry, no duplicate nav target.
+    role_nav = [s_dashboard, s_reminders, s_analytics, s_predictions]
 elif role == "doctor":
     role_nav = [d_dashboard, d_appointments]
 elif role == "admin":

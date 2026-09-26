@@ -35,15 +35,19 @@ def _dashboard_target() -> str:
 
 
 def _hero() -> None:
-    """Gradient hero band (text/CSS only)."""
+    """Glassmorphic light-green hero band (self-contained, no theme variables)."""
     st.markdown(
         f"""
         <div style="
             text-align: center;
             padding: 2.75rem 2rem;
-            background: linear-gradient(135deg, var(--mc-navy) 0%, var(--mc-teal) 100%);
-            border-radius: var(--mc-radius);
-            color: white;
+            background-color: rgba(134, 239, 172, 0.25);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(134, 239, 172, 0.4);
+            box-shadow: 0 8px 32px rgba(134, 239, 172, 0.15);
+            border-radius: 12px;
+            color: #14532D;
             margin-bottom: 1.25rem;
         ">
             <p style="font-size: clamp(1.15rem, 2vw, 1.4rem); margin: 0 0 0.75rem 0; opacity: 0.95;">
@@ -57,47 +61,109 @@ def _hero() -> None:
         """,
         unsafe_allow_html=True,
     )
-
-
 def _cta_row(is_guest: bool) -> None:
     """Primary actions: Sign In (guests) or dashboard (signed-in), plus Departments."""
-    left, right = st.columns(2, gap="medium")
-    with left:
-        if is_guest:
-            if st.button(
-                "Sign In to your portal",
-                key="home_sign_in",
-                type="primary",
-                width="stretch",
-            ):
-                st.switch_page(_login_target())
-            st.caption(
-                "Passwordless: enter your email and we send an 8-digit code — no password to remember."
-            )
-        else:
-            st.page_link(
-                _dashboard_target(),
-                label="Open your dashboard",
-                icon=":material/dashboard:",
-                width="stretch",
-            )
-            st.caption("You're signed in. Use the navigation above to manage your care.")
-    with right:
-        st.page_link(
-            _departments_target(),
-            label="Browse Departments",
-            icon=":material/local_hospital:",
-            width="stretch",
-        )
-        st.caption("Departments, services, and specialists — open to everyone, no account needed.")
+    st.markdown(
+        """
+        <style>
+        .st-key-home_sign_in button[kind="primary"],
+        .st-key-home_sign_in button[data-testid="baseButton-primary"],
+        div.st-key-home_sign_in > div > button {
+            background-color: #FFFFFF !important;
+            background: #FFFFFF !important;
+            border: 1px solid rgba(134, 239, 172, 0.6) !important;
+            box-shadow: none !important;
+            color: #14532D !important;
+        }
+        .st-key-home_sign_in button[kind="primary"]:hover,
+        .st-key-home_sign_in button[data-testid="baseButton-primary"]:hover,
+        div.st-key-home_sign_in > div > button:hover {
+            background-color: #FFFFFF !important;
+            background: #FFFFFF !important;
+            border-color: rgba(134, 239, 172, 0.9) !important;
+            box-shadow: none !important;
+            color: #14532D !important;
+        }
+        .st-key-mc_cta_dashboard_link a[data-testid="stPageLink-NavLink"],
+        .st-key-mc_cta_dept_link a[data-testid="stPageLink-NavLink"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid rgba(134, 239, 172, 0.6) !important;
+            box-shadow: none !important;
+            color: #14532D !important;
+        }
+        .st-key-mc_cta_dashboard_link a[data-testid="stPageLink-NavLink"]:hover,
+        .st-key-mc_cta_dept_link a[data-testid="stPageLink-NavLink"]:hover {
+            background-color: #FFFFFF !important;
+            border-color: rgba(134, 239, 172, 0.9) !important;
+            box-shadow: none !important;
+            color: #14532D !important;
+        }
+        /* Align both CTA buttons on one line, same height, same baseline */
+        .st-key-mc_cta_row div[data-testid="stHorizontalBlock"] {
+            align-items: flex-start;
+        }
+        .st-key-home_sign_in,
+        .st-key-mc_cta_dashboard_link,
+        .st-key-mc_cta_dept_link {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+        }
+        .st-key-home_sign_in button,
+        .st-key-mc_cta_dashboard_link a[data-testid="stPageLink-NavLink"],
+        .st-key-mc_cta_dept_link a[data-testid="stPageLink-NavLink"] {
+            width: 100%;
+            height: 3rem;
+            margin: 0 !important;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
+    with st.container(key="mc_cta_row"):
+        left, right = st.columns(2, gap="medium")
+        with left:
+            if is_guest:
+                with st.container(key="home_sign_in"):
+                    if st.button(
+                        "Sign In to your portal",
+                        key="home_sign_in_btn",
+                        type="primary",
+                        width="stretch",
+                    ):
+                        st.switch_page(_login_target())
+                st.caption(
+                    "Passwordless: enter your email and we send an 8-digit code, no password to remember."
+                )
+            else:
+                with st.container(key="mc_cta_dashboard_link"):
+                    st.page_link(
+                        _dashboard_target(),
+                        label="Open your dashboard",
+                        icon=":material/dashboard:",
+                        width="stretch",
+                    )
+                st.caption("You're signed in. Use the navigation above to manage your care.")
+        with right:
+            with st.container(key="mc_cta_dept_link"):
+                st.page_link(
+                    _departments_target(),
+                    label="Browse Departments",
+                    icon=":material/local_hospital:",
+                    width="stretch",
+                )
+            st.caption("Departments, services, and specialists, open to everyone, no account needed.")
 
 def render() -> None:
     is_guest = not st.session_state.get("mc_auth", {}).get("logged_in")
 
     page_head(
         f"Welcome to {HOSPITAL.short_name}",
-        "Sign in to your secure portal, or explore our departments and specialists — no account needed.",
+        "Sign in to your secure portal, or explore our departments and specialists, no account needed.",
     )
 
     _hero()
@@ -106,7 +172,7 @@ def render() -> None:
     if is_guest:
         st.info(
             "Sign in to see your live appointments, reminders, and payment status in one "
-            "place — department and specialist information below stays open to everyone."
+            "place. Department and specialist information below stays open to everyone."
         )
 
     # Live catalog totals (public endpoints — guests included).
@@ -126,7 +192,7 @@ def render() -> None:
     with col4:
         st.metric("Emergency", HOSPITAL.emergency)
     if dept_count is None or doctor_count is None:
-        st.caption("Live totals are temporarily unavailable — please try again shortly.")
+        st.caption("Live totals are temporarily unavailable, please try again shortly.")
 
     st.divider()
 
@@ -137,70 +203,48 @@ def render() -> None:
     )
 
     features = [
-        (
-            ":material/local_hospital:",
-            "Multispecialty departments",
-            "Browse clinical departments, the services they provide, and their specialists.",
-        ),
-        (
-            ":material/stethoscope:",
-            "Experienced doctors",
-            "Meet our consultants and their areas of specialization.",
-        ),
-        (
-            ":material/calendar_month:",
-            "Online appointment booking",
-            "Book, reschedule, or cancel appointments from your portal.",
-        ),
-        (
-            ":material/smart_toy:",
-            "AI assistant",
-            "Get help with bookings, hospital information, and support requests.",
-        ),
-        (
-            ":material/credit_card:",
-            "Secure payments",
-            "Pay online by UPI, card, or cash — with insurance claim support.",
-        ),
-        (
-            ":material/monitoring:",
-            "Analytics & forecasting",
-            "Live operational analytics and next-day demand forecasting for staff.",
-        ),
-        (
-            ":material/notifications:",
-            "Appointment reminders",
-            "Automated reminders so you don't miss your visit.",
-        ),
-        (
-            ":material/star:",
-            "Patient feedback",
-            "Rate your experience and help us improve.",
-        ),
+        (":material/local_hospital:", "Multispecialty departments",
+         "Browse clinical departments, the services they provide, and their specialists."),
+        (":material/stethoscope:", "Experienced doctors",
+         "Meet our consultants and their areas of specialization."),
+        (":material/calendar_month:", "Online appointment booking",
+         "Book, reschedule, or cancel appointments from your portal."),
+        (":material/smart_toy:", "AI assistant",
+         "Get help with bookings, hospital information, and support requests."),
+        (":material/credit_card:", "Secure payments",
+         "Pay online by UPI, card, or cash, with insurance claim support."),
+        (":material/monitoring:", "Analytics & forecasting",
+         "Live operational analytics, next-day demand forecasting for staff."),
+        (":material/notifications:", "Appointment reminders",
+         "Automated reminders so you don't miss your visit."),
+        (":material/star:", "Patient feedback",
+         "Rate your experience and help us improve."),
     ]
 
     cols = st.columns(2, gap="large")
     for idx, (icon, title, desc) in enumerate(features):
         with cols[idx % 2]:
-            with st.container(border=True):
-                st.markdown(f"### {icon} {title}")
+            with st.container(border=True, key=f"mc_feat_card_{idx}"):
+                st.markdown(f"#### {icon} {title}")
                 st.write(desc)
-
     st.divider()
 
     # Departments overview — live data, open to guests too.
-    section_title("Our Departments", "Live from the hospital directory — open to everyone")
+    section_title("Our Departments", "Live from the hospital directory, open to everyone")
 
     if dept_res.success and dept_res.data:
         dept_cols = st.columns(3, gap="medium")
         for idx, dept in enumerate(dept_res.data[:6]):
             with dept_cols[idx % 3]:
-                with st.container(border=True):
-                    name = dept.get("name") or "Department"
-                    desc = dept.get("description") or ""
-                    st.write(f"**{name}**")
+                name = dept.get("name") or "Department"
+                desc = dept.get("description") or ""
+
+                with st.container(border=True, key=f"mc_feat_dept_{idx}"):
+                    st.markdown(f"**{name}**")
                     if desc:
-                        st.caption(desc[:110] + ("…" if len(desc) > 110 else ""))
+                        st.caption(
+                            desc[:110] + ("…" if len(desc) > 110 else "")
+                        )
         st.page_link(
             _departments_target(),
             label="View all departments",
@@ -235,8 +279,6 @@ def render() -> None:
         """,
         unsafe_allow_html=True,
     )
-
-    st.caption(HOSPITAL.disclaimer)
 
 
 if __name__ == "__main__":

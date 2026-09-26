@@ -12,8 +12,8 @@ from datetime import timedelta
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb
-from frontend.components.ui import recommendation_note
-from frontend.components.analytics import hospital_now, render_forecast
+from frontend.components.ui import loading
+from frontend.components.analytics import hospital_now, render_forecast, render_recommendations
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error
 from frontend.api.analytics_services import PredictionsService
@@ -46,7 +46,7 @@ def render_forecast_tab() -> None:
     target = hospital_now().date() + timedelta(days=1)
 
     st.info(
-        f"Forecasting for **{target:%A, %d %B %Y}** — tomorrow in the hospital's local time. "
+        f"Forecasting for **{target:%A, %d %B %Y}**: tomorrow in the hospital's local time. "
         "Both forecasts below load automatically whenever this page is opened."
     )
 
@@ -61,7 +61,7 @@ def render_forecast_tab() -> None:
             "department. Departments without enough history are listed separately instead of "
             "being given an invented number.",
         )
-        with st.spinner("Loading the next-day bed-demand forecast..."):
+        with loading("Loading the next-day bed-demand forecast..."):
             res = service.bed_demand(target_date=target.isoformat())
         _render_forecast_result(
             res,
@@ -78,11 +78,11 @@ def render_forecast_tab() -> None:
         section_title(
             f"Expected patient flow by department on {target:%d %b %Y}",
             "How many patient visits each department is expected to receive tomorrow. Values are "
-            "visit counts estimated from historical arrival patterns — read them as 'patients to "
+            "visit counts estimated from historical arrival patterns, read them as 'patients to "
             "prepare for' per department. Departments without enough history are listed separately "
             "instead of being given an invented number.",
         )
-        with st.spinner("Loading the next-day patient-flow forecast..."):
+        with loading("Loading the next-day patient-flow forecast..."):
             res = service.patient_flow(target_date=target.isoformat())
         _render_forecast_result(
             res,
@@ -94,7 +94,7 @@ def render_forecast_tab() -> None:
             ),
         )
 
-    recommendation_note("Recommendations")
+    render_recommendations("Recommendations")
 
 
 def _render_forecast_result(res, *, metric_label: str, y_label: str, how_to_read: str) -> None:

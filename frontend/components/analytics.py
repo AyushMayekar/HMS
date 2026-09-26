@@ -16,6 +16,13 @@ import streamlit as st
 from frontend.config import CONFIG
 from frontend.components.navbar import empty_state
 from frontend.api.catalog_services import CatalogService
+from frontend.api.analytics_services import AnalyticsService
+from frontend.components.ui import (
+    friendly_error,
+    loading,
+    recommendation_bullets,
+    recommendation_note,
+)
 from frontend.utils.states import display_api_error, format_datetime
 
 VIEW_BY_OPTIONS = ["Day", "Week", "Month", "Year"]
@@ -30,11 +37,11 @@ RANGE_PAGES = 6  # periods per page, mirrors backend paging
 PREDICTED_WAITS_KEY = "staff_predicted_waits"
 
 RISK_BAND_LEGEND = (
-    "Risk bands — High: above 60% no-show likelihood · "
+    "Risk bands. High: above 60% no-show likelihood · "
     "Medium: above 30% up to 60% · Low: up to 30%."
 )
 RISK_SCORE_LEGEND = (
-    "Risk bands (rule-based score — model unavailable for these visits) — "
+    "Risk bands (rule-based score: model unavailable for these visits). "
     "High: 40 or more · Medium: 20–39 · Low: below 20."
 )
 
@@ -137,29 +144,6 @@ def risk_pill(level: str, label: Optional[str] = None) -> str:
     return info_pill(label or level.upper(), tone=level)
 
 
-def risk_text(prediction: Any) -> str:
-    """
-    Compact one-line rendering of a stored no-show prediction.
-
-    Handles BOTH payload shapes the backend can persist:
-      * model-based  -> ``63% · high``
-      * rule-based   -> ``score 35 · medium`` (no probability is invented)
-      * malformed    -> ``—``
-    """
-    if not isinstance(prediction, dict):
-        return "—"
-    probability = prediction.get("no_show_probability")
-    risk_level = prediction.get("risk_level")
-    if probability is None:
-        # Rule-based fallback (model artifact unavailable) reports a 0-100
-        # risk_score instead of a probability — show it as-is.
-        score = prediction.get("risk_score")
-        if score is None:
-            return str(risk_level) if risk_level is not None else "—"
-        return f"score {score} · {risk_level or '—'}"
-    return f"{float(probability) * 100:.0f}% · {risk_level or '—'}"
-
-
 def chart_section(title: str, explanation: str | None = None) -> None:
     """Chart subheading with a one-line explanation of what the chart shows."""
     st.subheader(title)
@@ -239,11 +223,11 @@ def view_by_range_control(
         range_index = st.session_state.get(f"{key_prefix}_range_index", 0)
         cA, cB = st.columns(2)
         with cA:
-            if st.button("Earlier", key=f"{key_prefix}_range_prev", disabled=range_index <= 0, width="stretch"):
+            if st.button("Later", key=f"{key_prefix}_range_prev", disabled=range_index <= 0, width="stretch"):
                 st.session_state[f"{key_prefix}_range_index"] = range_index - 1
                 st.rerun()
         with cB:
-            if st.button("Later", key=f"{key_prefix}_range_next", width="stretch"):
+            if st.button("Earlier", key=f"{key_prefix}_range_next", width="stretch"):
                 st.session_state[f"{key_prefix}_range_index"] = range_index + 1
                 st.rerun()
     st.caption("Use Earlier / Later to page through the available history.")
@@ -281,6 +265,46 @@ def guard_response(response, prefix: str = "") -> bool:
         display_api_error(response)
         return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Business-value recommendations (LLM-backed)
+# ---------------------------------------------------------------------------
+RECOMMENDATION_CAPTION = (
+    "Written by the AI assistant from the analytics and forecasts above. "
+    "Operational guidance only, never medical advice - all figures come "
+    "from live hospital data."
+)
+
+
+def render_recommendations(title: str = "Recommendations") -> None:
+    """Fetch and render the business-value recommendation block.
+
+    Shared by the staff analytics and forecasting pages (and, through them,
+    by the admin twins of both pages). Three outcomes, in order:
+
+    - request failed        -> ``ui.friendly_error`` (never raw API text);
+    - model not configured,  -> the neutral ``ui.recommendation_note``
+      timed out or empty        placeholder, so the section still reads as
+                                intentional without a key;
+    - model returned bullets -> ``ui.recommendation_bullets``.
+    """
+    service = AnalyticsService()
+    with loading("Preparing recommendations from the latest analytics..."):
+        res = service.recommendation()
+
+    if not res.success:
+        friendly_error(res)
+        return
+
+    data = res.data if isinstance(res.data, dict) else {}
+    bullets = [str(b).strip() for b in (data.get("bullets") or []) if str(b).strip()]
+
+    if data.get("source") != "llm" or not bullets:
+        recommendation_note(title)
+        return
+
+    recommendation_bullets(title, bullets, caption=RECOMMENDATION_CAPTION)
 
 
 # ---------------------------------------------------------------------------
@@ -432,7 +456,7 @@ def render_no_show_risk(data: dict) -> None:
                     st.metric(
                         "No-show risk score",
                         f"{appt.get('risk_score', 0)}/100",
-                        help="Rule-based score — the model could not score this visit.",
+                        help="Rule-based score: the model could not score this visit.",
                     )
             with col3:
                 st.markdown(risk_pill(resolve_risk_level(appt)), unsafe_allow_html=True)
@@ -545,6 +569,18 @@ def render_billing_analytics(data: dict) -> None:
 # ---------------------------------------------------------------------------
 # Satisfaction analytics
 # ---------------------------------------------------------------------------
+def _bucket_avg(df: pd.DataFrame, value_col: str, score_col: str, bins: list, labels: list) -> pd.DataFrame:
+    """Bucket a continuous column into ranges and average the score in each bucket."""
+    df = df.copy()
+    df["_bucket"] = pd.cut(df[value_col], bins=bins, labels=labels, right=False)
+    grouped = (
+        df.groupby("_bucket", observed=True)[score_col]
+        .agg(avg_score="mean", count="count")
+        .reset_index()
+        .rename(columns={"_bucket": "range"})
+    )
+    return grouped
+
 
 def render_satisfaction_analytics(data: dict) -> None:
     if "message" in data:
@@ -588,31 +624,47 @@ def render_satisfaction_analytics(data: dict) -> None:
     with col1:
         chart_section(
             "Satisfaction versus waiting time",
-            "Each dot is one visit: how long the patient waited versus the score they gave.",
+            "Average satisfaction score for visits grouped by how long the patient waited.",
         )
         wait = as_frame(data.get("vs_wait_time") or [])
         if wait is not None and not wait.empty:
-            st.scatter_chart(
-                wait, x="actual_wait_minutes", y="satisfaction_score",
-                x_label="Actual wait after check-in (minutes)",
-                y_label="Satisfaction score (1–5)",
-                height=300,
+            wait_bins = [0, 15, 30, 45, 60, 90, float("inf")]
+            wait_labels = ["0–15", "15–30", "30–45", "45–60", "60–90", "90+"]
+            wait_grouped = _bucket_avg(
+                wait, "actual_wait_minutes", "satisfaction_score", wait_bins, wait_labels
             )
+            if not wait_grouped.empty:
+                st.bar_chart(
+                    wait_grouped, x="range", y="avg_score",
+                    x_label="Wait time (minutes)",
+                    y_label="Average satisfaction (1–5)",
+                    height=300,
+                )
+            else:
+                st.caption("No visits have both a wait time and a satisfaction score yet.")
         else:
             st.caption("No visits have both a wait time and a satisfaction score yet.")
     with col2:
         chart_section(
             "Satisfaction versus billing delay",
-            "Each dot is one visit: days until billing versus the score the patient gave.",
+            "Average satisfaction score for visits grouped by billing delay.",
         )
         bill = as_frame(data.get("vs_billing_delay") or [])
         if bill is not None and not bill.empty:
-            st.scatter_chart(
-                bill, x="billing_delay_days", y="satisfaction_score",
-                x_label="Billing delay (days)",
-                y_label="Satisfaction score (1–5)",
-                height=300,
+            bill_bins = [0, 1, 3, 7, 14, 30, float("inf")]
+            bill_labels = ["0–1", "1–3", "3–7", "7–14", "14–30", "30+"]
+            bill_grouped = _bucket_avg(
+                bill, "billing_delay_days", "satisfaction_score", bill_bins, bill_labels
             )
+            if not bill_grouped.empty:
+                st.bar_chart(
+                    bill_grouped, x="range", y="avg_score",
+                    x_label="Billing delay (days)",
+                    y_label="Average satisfaction (1–5)",
+                    height=300,
+                )
+            else:
+                st.caption("No visits have both a billing delay and a satisfaction score yet.")
         else:
             st.caption("No visits have both a billing delay and a satisfaction score yet.")
 
@@ -623,7 +675,6 @@ def render_satisfaction_analytics(data: dict) -> None:
             f"Highest average satisfaction: {top.get('department')} ({float(top.get('avg_score', 0)):.1f}/5). "
             f"Lowest: {bottom.get('department')} ({float(bottom.get('avg_score', 0)):.1f}/5)."
         )
-
 
 # ---------------------------------------------------------------------------
 # Booking channel analytics
@@ -997,7 +1048,7 @@ def render_forecast(
         with st.expander(f"Departments with insufficient data ({len(insufficient)})"):
             st.caption(
                 "These departments do not have enough historical records to produce a reliable "
-                "forecast for this date — no values are shown rather than estimated ones."
+                "forecast for this date. No values are shown rather than estimated ones."
             )
             for item in insufficient:
                 st.write(f"**{item.get('department_name')}**")

@@ -24,9 +24,9 @@ def render() -> None:
             1. Open **Sign In / Sign Up** in the top navigation
             2. Switch to the **Sign Up** tab and enter your name, email, phone,
                date of birth, and gender
-            3. Click **Create account** — we email you an **8-digit code**
+            3. Click **Create account**, we email you an **8-digit code**
             4. Enter the 8-digit code to verify your email
-            5. Your patient account is ready — you land in your dashboard
+            5. Your patient account is ready, you land in your dashboard
             """
         )
 
@@ -36,7 +36,7 @@ def render() -> None:
             1. Open **Sign In** in the top navigation
             2. Enter your registered email and click **Send 8-digit code**
             3. Check your email for the **8-digit code**
-            4. Enter the code to verify — you're signed in
+            4. Enter the code to verify, you're signed in
 
             No password is required.
             """
@@ -66,9 +66,10 @@ def render() -> None:
             - No passwords to remember
             - We email an **8-digit code** to your registered address
             - Enter the 8 digits exactly as received to verify it's you
-            - Codes are short-lived — if yours expires, request a new one
+            - Codes are short-lived, if yours expires, request a new one
             - Didn't receive it? Check your spam folder, confirm the email
-              address, and click **Resend code**
+              address, then choose **Start over, sign in again** to request a
+              new code
             """
         )
 
@@ -81,7 +82,7 @@ def render() -> None:
             Yes, you can manage your own bookings:
             - Go to **Appointments** in your portal and open the booking
             - **Reschedule:** pick a new available slot for the same doctor
-            - **Cancel:** cancel an upcoming appointment — the slot is released
+            - **Cancel:** cancel an upcoming appointment, the slot is released
               for other patients
             - Please reschedule or cancel before your visit time so the slot
               can be reused
@@ -94,7 +95,7 @@ def render() -> None:
             - Appointments missed without cancellation are marked as **No Show**
             - Missed visits affect your appointment history, so please cancel
               ahead of time if you can't attend
-            - Contact the care desk if you had an emergency — we can review
+            - Contact the care desk if you had an emergency, we can review
               your record
             """
         )
@@ -103,7 +104,7 @@ def render() -> None:
         st.write(
             """
             - You'll receive an email confirmation after booking
-            - Open **Appointments** in your portal — the status will show
+            - Open **Appointments** in your portal, the status will show
               "Confirmed"
             - You'll receive a reminder 24 hours before your visit
             """
@@ -191,7 +192,8 @@ def render() -> None:
             - Check your spam/junk folder
             - Wait a minute or two for delivery
             - Ensure you entered the correct email address
-            - Click **Resend code** on the verification screen
+            - Choose **Start over, sign in again** on the verification screen
+              to return to sign-in and request a new code
             - Contact the care desk if the problem persists
             """
         )
@@ -230,7 +232,7 @@ def render() -> None:
                 width="stretch",
             )
 
-    st.caption(HOSPITAL.disclaimer)
+
 
 
 if __name__ == "__main__":
