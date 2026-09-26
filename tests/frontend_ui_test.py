@@ -112,6 +112,28 @@ def expect(app: AppTest, name: str, *texts: str) -> bool:
     return not missing
 
 
+def nav_labels(app: AppTest) -> list[str]:
+    """
+    Labels rendered by ``st.page_link`` (the navigation bar). AppTest exposes
+    them as unknown elements, so walk the element tree and read their protos.
+    """
+    labels: list[str] = []
+
+    def walk(node) -> None:
+        children = getattr(node, "children", None)
+        if isinstance(children, dict):
+            for child in children.values():
+                walk(child)
+            return
+        proto = getattr(node, "proto", None)
+        label = getattr(proto, "label", None) if proto is not None else None
+        if label:
+            labels.append(label)
+
+    walk(app.main)
+    return labels
+
+
 def main() -> int:
     creds = {}
     for role, email in ACCOUNTS.items():
@@ -188,17 +210,30 @@ def main() -> int:
     run_page(s, "pages/staff/appointments.py")
     expect(s, "staff appointments page renders")
 
+    # One reminder workflow: the staff nav exposes exactly one Reminders entry.
+    check("staff nav has exactly one Reminders entry",
+          nav_labels(s).count("Reminders") == 1, f"nav={nav_labels(s)}")
+    check("staff nav order",
+          nav_labels(s)[:5] == ["Operations", "Appointments", "Reminders",
+                                "Analytics", "Forecasting"], f"nav={nav_labels(s)[:6]}")
+
     run_page(s, "pages/staff/reminders.py")
-    expect(s, "staff reminders page renders")
+    expect(s, "staff reminders page renders", "Reminders")
+    check("staff reminders exposes the single prediction action",
+          sum(1 for b in s.button if b.label == "Predict Selected") == 1,
+          f"buttons={[b.label for b in s.button]}")
 
     run_page(s, "pages/staff/analytics.py")
     exc = [e.value for e in s.exception]
     check("staff analytics page renders (8 tabs)", not exc, f"exception: {exc}")
 
     run_page(s, "pages/staff/predictions.py")
-    expect(s, "staff predictions page renders", "No-show scoring")
+    expect(s, "staff predictions page renders", "Forecasting")
     check("staff predictions tabs present",
           any(t.label == "Department Forecasts" for t in s.tabs))
+    check("no-show scoring removed from Forecasting",
+          not any(t.label == "No-Show Scoring" for t in s.tabs),
+          f"tabs={[t.label for t in s.tabs]}")
 
     # ---------- Administration ----------
     a = AppTest.from_file(APP_PATH, default_timeout=300)

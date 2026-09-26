@@ -1,5 +1,9 @@
 """
 Staff Forecasting page — automatic next-day department forecasts.
+
+No-show scoring deliberately does NOT live here: it belongs to the single
+Staff Reminders workflow (``frontend/pages/staff/reminders.py``). This page
+is only about forecasting.
 """
 from __future__ import annotations
 
@@ -25,7 +29,9 @@ def render():
     current_user()
 
     breadcrumb(["Staff", "Forecasting"])
-    render_forecast_tab()
+    (_forecasts,) = st.tabs(["Department Forecasts"])
+    with _forecasts:
+        render_forecast_tab()
 
 
 def render_forecast_tab() -> None:

@@ -45,6 +45,16 @@ class Settings(BaseModel):
     ml_no_show_model_version: str = os.getenv("ML_NO_SHOW_MODEL_VERSION", "v1.0")
     ml_waiting_time_model_version: str = os.getenv("ML_WAITING_TIME_MODEL_VERSION", "v1.0")
 
+    # No-show scoring window (§16 / capstone selection flow): predictions are
+    # offered ~24h before the appointment, inside a configurable tolerance
+    # band, and only for an explicit user selection. The default band is
+    # ±12h (i.e. 12–36h before the visit) so a real day's worth of
+    # appointments is actually offered; NOSHOW_TOLERANCE_MINUTES overrides it.
+    noshow_tolerance_minutes: int = int(os.getenv("NOSHOW_TOLERANCE_MINUTES", "720"))
+    # Hard cap per "Predict Selected" action — enforced in the API/service
+    # (authoritative) and mirrored in the frontend.
+    noshow_max_batch: int = int(os.getenv("NOSHOW_MAX_BATCH", "10"))
+
     # SMTP Configuration (for real emails if needed)
     brevo_smtp: Optional[str] = os.getenv("BREVO_SMTP")
 

@@ -1,10 +1,16 @@
 """Transaction specifications for the AI agent."""
 
+from app.utils.validators import ADMIN_REQUEST_CATEGORIES
+
 
 TRANSACTION_SPECS = {
     "appointment_booking": {
         "label": "appointment booking",
-        "required_fields": ("department", "appointment_date", "appointment_time"),
+        # Deliberately empty: booking must NOT demand department + date + time
+        # up front. Volunteered details are still extracted (extract_fields)
+        # and fed into discovery, which resolves them against live DB data
+        # progressively (department -> doctor -> availability -> slot).
+        "required_fields": (),
         "extract_fields": ("department", "doctor", "appointment_date", "appointment_time"),
         "summary_labels": {
             "department": "Department",
@@ -25,7 +31,9 @@ TRANSACTION_SPECS = {
         "extract_fields": ("category", "description"),
         "summary_labels": {"category": "Category", "description": "Description"},
         "user_input_guidance": {
-            "category": "Request category: refund, appointment_issue, account_issue, admin_requirement, or general_support",
+            "category": (
+                "Request category: " + ", ".join(ADMIN_REQUEST_CATEGORIES)
+            ),
             "description": "Describe your request in detail",
         },
     },
@@ -98,10 +106,19 @@ def get_transaction_spec(intent: str) -> dict:
         raise ValueError(f"No transaction specification configured for intent: {intent}") from exc
 
 
-def build_missing_fields_message(intent: str, missing_fields: list[str]) -> str:
+def build_missing_fields_message(
+    intent: str,
+    missing_fields: list[str],
+    invalid_fields: list[str] | None = None,
+) -> str:
     spec = get_transaction_spec(intent)
     lines = [f"I need a few more details to complete the {spec['label']}.", "", "Please provide:"]
     for field in missing_fields:
         instruction = spec["user_input_guidance"].get(field, field.replace("_", " ").title())
         lines.append(f"- {instruction}")
+    if invalid_fields:
+        lines.append("")
+        lines.append("Please correct the following:")
+        for problem in invalid_fields:
+            lines.append(f"- {problem}")
     return "\n".join(lines)

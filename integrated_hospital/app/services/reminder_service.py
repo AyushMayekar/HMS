@@ -13,7 +13,6 @@ from uuid import uuid4
 
 from app.config.settings import get_supabase_admin_client
 from app.services.audit_service import log_audit_event
-from app.services.prediction_service import predict_no_show
 from app.services.staff_appointment_service import _enrich_appointments
 from app.utils.exceptions import AppointmentNotFoundError, InvalidOperationError
 from app.utils.logger import log_info
@@ -126,45 +125,42 @@ def list_patient_reminders(
 def _resolve_no_show_prediction(
     appointment_id: str | None,
     stored_entry: dict[str, Any] | None,
-) -> tuple[Any, Any, Any]:
+) -> tuple[Any, Any, Any, Any]:
     """
-    (no_show_probability, risk_level, predicted_no_show) for one appointment.
+    (no_show_probability, risk_level, predicted_no_show, last_scored_at) for
+    one appointment.
 
     Prefers the latest SUCCESSFUL stored prediction (prediction_logs) — real
-    backend data already scored for this visit. Only when no stored score
-    exists at all does it score live through the existing no-show prediction
-    service (which persists its own prediction_logs row, so subsequent loads
-    reuse it; no separate prediction system is created).
-    """
-    if stored_entry is not None:
-        prediction = stored_entry.get("prediction")
-        if isinstance(prediction, str):
-            try:
-                prediction = json.loads(prediction)
-            except (TypeError, ValueError):
-                prediction = None
-        if isinstance(prediction, dict):
-            return (
-                prediction.get("no_show_probability"),
-                prediction.get("risk_level"),
-                prediction.get("no_show"),
-            )
-        return None, None, None
+    backend data already scored for this visit.
 
-    if not appointment_id:
-        return None, None, None
-    try:
-        result = predict_no_show(appointment_id)
-    except Exception:
-        return None, None, None
-    if result.get("prediction_status") != "success":
-        return None, None, None
-    prediction = result.get("prediction") or {}
-    return (
-        prediction.get("no_show_probability"),
-        prediction.get("risk_level"),
-        prediction.get("no_show"),
-    )
+    Listing never runs inference: the previous fallback scored each
+    appointment live inside ``GET /staff/reminders``, which cost ~2 sequential
+    database round-trips per row (~370 ms) and made the staff dashboard/reminders
+    page take ~77 s for ``limit=200`` — far beyond the 30 s client timeout.
+    Scores are now produced only by the explicit selection action
+    (``POST /predictions/no-show-batch``, max 10) or the scheduled 24h job;
+    appointments that have not been scored yet simply report ``None``.
+    """
+    if stored_entry is None:
+        return None, None, None, None
+
+    prediction = stored_entry.get("prediction")
+    if isinstance(prediction, str):
+        try:
+            prediction = json.loads(prediction)
+        except (TypeError, ValueError):
+            prediction = None
+    if isinstance(prediction, dict):
+        # NOTE: a rule-based prediction carries ``risk_score`` but no
+        # ``no_show_probability`` — ``.get`` keeps it None instead of
+        # fabricating a percentage.
+        return (
+            prediction.get("no_show_probability"),
+            prediction.get("risk_level"),
+            prediction.get("no_show"),
+            stored_entry.get("predicted_at"),
+        )
+    return None, None, None, None
 
 
 def list_reminders(
@@ -177,9 +173,9 @@ def list_reminders(
 
     Returns EVERY upcoming appointment — with or without an existing reminder
     row — enriched with real patient/doctor/department names, reminder fields
-    flattened when a reminder exists, and the backend no-show prediction
-    (stored prediction, else live scoring). Reminder timing is the fixed
-    24-hour model (hours_before_appointment defaults to 24).
+    flattened when a reminder exists, and the stored no-show prediction when
+    one exists (listing never runs inference — see ``_resolve_no_show_prediction``).
+    Reminder timing is the fixed 24-hour model (hours_before_appointment defaults to 24).
     """
     admin_supabase = get_supabase_admin_client()
     now = datetime.now(timezone.utc)
@@ -258,12 +254,13 @@ def list_reminders(
         item["reminder_message"] = reminder.get("message")
         item["reminder_sent"] = bool(reminder) or bool(row.get("reminder_sent"))
 
-        probability, risk_level, predicted_no_show = _resolve_no_show_prediction(
+        probability, risk_level, predicted_no_show, last_scored_at = _resolve_no_show_prediction(
             appointment_id, stored_prediction.get(appointment_id)
         )
         item["no_show_probability"] = probability
         item["risk_level"] = risk_level
         item["predicted_no_show"] = predicted_no_show
+        item["last_scored_at"] = last_scored_at
         items.append(item)
 
     return {

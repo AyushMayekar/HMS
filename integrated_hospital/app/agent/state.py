@@ -15,6 +15,13 @@ class AgentState(TypedDict, total=False):
     messages: list[dict[str, str]]
 
     intent: str
+    # True when the classifier returned a value outside the controlled intent
+    # set and the safe fallback intent was used instead.
+    intent_fallback: bool
+    # Set when a pending interrupt received a message that clearly starts a
+    # different supported intent; the router sends the turn back to
+    # understand_intent instead of re-asking the pending question.
+    escape_intent: str | None
     needs_rag: bool
     needs_transaction: bool
 
@@ -26,6 +33,9 @@ class AgentState(TypedDict, total=False):
     invalid_fields: list[str]
 
     validation_errors: list[str]
+    # Last extraction input already processed for the current transaction, so
+    # one user message is never extracted twice within a turn.
+    extraction_cursor: str | None
     summary: list[dict[str, Any]]
 
     confirmed: bool

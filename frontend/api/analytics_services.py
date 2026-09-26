@@ -21,6 +21,8 @@ from frontend.api.endpoints import (
     PREDICTIONS_BED_DEMAND,
     PREDICTIONS_BOOKING_WAITING_TIME,
     PREDICTIONS_NO_SHOW,
+    PREDICTIONS_NO_SHOW_BATCH,
+    PREDICTIONS_NO_SHOW_ELIGIBLE,
     PREDICTIONS_PATIENT_FLOW,
     PREDICTIONS_WAITING_TIME,
 )
@@ -160,6 +162,25 @@ class PredictionsService:
         """Predict no-show for an appointment."""
         endpoint = PREDICTIONS_NO_SHOW.format(appointment_id=appointment_id)
         return self.client.post(endpoint)
+
+    def no_show_eligible(self, tolerance_minutes: Optional[int] = None, limit: int = 100) -> APIResponse:
+        """
+        Appointments scheduled at now + 24h inside the tolerance window
+        (default ±12 hours) that are still 'booked'. Read-only — never runs
+        inference, so opening the prediction page stays fast.
+        """
+        params: dict[str, Any] = {"limit": limit}
+        if tolerance_minutes is not None:
+            params["tolerance_minutes"] = tolerance_minutes
+        return self.client.get(PREDICTIONS_NO_SHOW_ELIGIBLE, params=params)
+
+    def no_show_batch(self, appointment_ids: list[str]) -> APIResponse:
+        """
+        Run the existing no-show model for an explicit selection.
+        The backend enforces the maximum batch size (default 10) and
+        re-checks 24h-window eligibility, returning 422 when exceeded.
+        """
+        return self.client.post(PREDICTIONS_NO_SHOW_BATCH, json_data={"appointment_ids": appointment_ids})
 
     def waiting_time(self, appointment_id: str) -> APIResponse:
         """Predict waiting time at check-in."""

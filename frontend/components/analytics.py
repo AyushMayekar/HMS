@@ -137,6 +137,29 @@ def risk_pill(level: str, label: Optional[str] = None) -> str:
     return info_pill(label or level.upper(), tone=level)
 
 
+def risk_text(prediction: Any) -> str:
+    """
+    Compact one-line rendering of a stored no-show prediction.
+
+    Handles BOTH payload shapes the backend can persist:
+      * model-based  -> ``63% · high``
+      * rule-based   -> ``score 35 · medium`` (no probability is invented)
+      * malformed    -> ``—``
+    """
+    if not isinstance(prediction, dict):
+        return "—"
+    probability = prediction.get("no_show_probability")
+    risk_level = prediction.get("risk_level")
+    if probability is None:
+        # Rule-based fallback (model artifact unavailable) reports a 0-100
+        # risk_score instead of a probability — show it as-is.
+        score = prediction.get("risk_score")
+        if score is None:
+            return str(risk_level) if risk_level is not None else "—"
+        return f"score {score} · {risk_level or '—'}"
+    return f"{float(probability) * 100:.0f}% · {risk_level or '—'}"
+
+
 def chart_section(title: str, explanation: str | None = None) -> None:
     """Chart subheading with a one-line explanation of what the chart shows."""
     st.subheader(title)

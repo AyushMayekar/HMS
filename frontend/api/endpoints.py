@@ -97,6 +97,8 @@ ANALYTICS_WAITING_TIME = "/analytics/waiting-time"
 
 # Predictions
 PREDICTIONS_NO_SHOW = "/predictions/no-show/{appointment_id}"
+PREDICTIONS_NO_SHOW_ELIGIBLE = "/predictions/no-show-eligible"
+PREDICTIONS_NO_SHOW_BATCH = "/predictions/no-show-batch"
 PREDICTIONS_WAITING_TIME = "/predictions/waiting-time/{appointment_id}"
 PREDICTIONS_BOOKING_WAITING_TIME = "/predictions/waiting-time/booking/{appointment_id}"
 PREDICTIONS_BOOKING_WAITING_TIME_PREVIEW = "/predictions/waiting-time/booking-preview"

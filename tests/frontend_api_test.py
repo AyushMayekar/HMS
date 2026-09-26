@@ -153,6 +153,20 @@ def main() -> int:
 
     status, body, _ = api("GET", "/staff/reminders", token=s, params={"limit": 5})
     check("staff reminders list", status == 200, f"status={status}")
+    reminder_rows = []
+    if status == 200:
+        payload = body.get("data") if isinstance(body.get("data"), dict) else body
+        reminder_rows = (payload or {}).get("reminders") or []
+    if reminder_rows:
+        # predicted_at is now passed through (not dropped) so the page can show
+        # the last-scored time; rule-based rows legitimately carry no probability.
+        missing = [k for k in ("no_show_probability", "risk_level",
+                               "predicted_no_show", "last_scored_at")
+                   if k not in reminder_rows[0]]
+        check("staff reminders expose stored prediction + last-scored time", not missing,
+              f"missing={missing} keys={list(reminder_rows[0])}")
+    else:
+        check("staff reminders expose stored prediction + last-scored time", True, "no rows")
 
     # Reminder create — the write path used by the staff Reminders page.
     status, body, _ = api("GET", "/staff/appointments", token=s,
@@ -175,6 +189,29 @@ def main() -> int:
               f"status={status} {json.dumps(body)[:160]}")
     else:
         check("create in-app reminder (Reminders page write path)", False, "no future booked appointment")
+
+    # Reminders table source — read-only: opening the Reminders page must never
+    # run inference, it only reports what is already stored.
+    status, body, _ = api("GET", "/predictions/no-show-eligible", token=s)
+    eligible = (body.get("data") or {}) if status == 200 else {}
+    check("no-show eligible window (read-only)", status == 200, f"status={status}")
+    eligible_rows = eligible.get("appointments") or []
+    if eligible_rows:
+        missing = [k for k in ("stored_prediction", "no_show_probability", "risk_level",
+                               "predicted_no_show", "last_scored_at", "reminder_id")
+                   if k not in eligible_rows[0]]
+        check("eligible rows carry stored prediction + reminder state", not missing,
+              f"missing={missing} keys={list(eligible_rows[0])}")
+    else:
+        check("eligible rows carry stored prediction + reminder state", True, "window empty")
+
+    # 'Predict Selected' is capped at 10 distinct ids, enforced server-side.
+    status, body, _ = api(
+        "POST", "/predictions/no-show-batch", token=s,
+        body={"appointment_ids": [f"00000000-0000-0000-0000-{i:012d}" for i in range(11)]},
+    )
+    check("no-show batch rejects more than 10 selected", status == 422,
+          f"status={status} {json.dumps(body)[:160]}")
 
     # ---------- Analytics (staff + admin pages) ----------
     for path in (

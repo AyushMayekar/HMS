@@ -207,9 +207,17 @@ def main() -> int:
               "existing API server and skipping the backend start.")
     else:
         backend_cmd = [
-            str(python), "-m", "uvicorn", "app.main:app",
-            "--host", BACKEND_HOST, "--port", str(BACKEND_PORT),
+            str(python),
+            "-m",
+            "uvicorn",
+            "app.main:app",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8000",
+            "--reload",
         ]
+
         print(f"[backend] Starting API on http://{BACKEND_HOST}:{BACKEND_PORT}  (cwd={BACKEND_DIR})", flush=True)
         proc = subprocess.Popen(backend_cmd, cwd=str(BACKEND_DIR))
         processes.append(proc)
@@ -221,7 +229,7 @@ def main() -> int:
               f"Open http://localhost:{STREAMLIT_PORT} in your browser.")
     else:
         frontend_cmd = [
-            str(python), "-m", "streamlit", "run", str(FRONTEND_APP),
+            str(python), "-m", "streamlit", "run", str(FRONTEND_APP), "--server.runOnSave", "true",
             "--server.port", str(STREAMLIT_PORT),
             "--server.headless", "true",
             "--browser.gatherUsageStats", "false",

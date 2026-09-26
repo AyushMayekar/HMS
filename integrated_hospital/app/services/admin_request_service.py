@@ -18,6 +18,7 @@ from app.utils.exceptions import (
     PaymentNotFoundError,
 )
 from app.utils.logger import log_info
+from app.utils.validators import ADMIN_REQUEST_CATEGORIES, normalize_admin_category
 
 
 def _normalize_timestamp(value: Any) -> Any:
@@ -64,6 +65,17 @@ def create_admin_request(
     Create an administrative request.
     Patient-created requests automatically use authenticated identity.
     """
+    # Canonical category contract, enforced at the service boundary so that no
+    # caller (AI agent, patient REST endpoint, or future code) can persist an
+    # unknown category. Known aliases resolve to their canonical value.
+    normalized_category = normalize_admin_category(category)
+    if normalized_category is None:
+        raise InvalidOperationError(
+            "Invalid request category. Must be one of: "
+            f"{', '.join(ADMIN_REQUEST_CATEGORIES)}."
+        )
+    category = normalized_category
+
     admin_supabase = get_supabase_admin_client()
 
     # Validate appointment if provided

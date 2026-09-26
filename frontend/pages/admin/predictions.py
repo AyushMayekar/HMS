@@ -26,7 +26,9 @@ def render():
     current_user()
 
     breadcrumb(["Admin", "Forecasting"])
-    render_forecast_tab()
+    (_forecasts,) = st.tabs(["Department Forecasts"])
+    with _forecasts:
+        render_forecast_tab()
 
 
 if __name__ == "__main__":

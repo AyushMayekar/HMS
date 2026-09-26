@@ -9,18 +9,20 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, field_validator
 
 from app.config.settings import get_settings
 from app.dependencies.auth import AuthContext, get_current_profile, require_staff_or_admin
 from app.services.prediction_service import (
+    list_no_show_eligible,
     predict_bed_demand,
     predict_booking_waiting_preview,
     predict_booking_waiting_time,
     predict_no_show,
     predict_patient_flow,
     predict_waiting_time,
+    run_no_show_for_ids,
 )
 
 router = APIRouter(
@@ -57,6 +59,53 @@ def _resolve_target_date(target_date: Optional[date]) -> date:
         return target_date
     tz = ZoneInfo(get_settings().hospital_timezone)
     return datetime.now(tz).date() + timedelta(days=1)
+
+
+class NoShowBatchRequest(BaseModel):
+    """Explicit selection for the 'Predict Selected' action (max = settings.noshow_max_batch)."""
+    appointment_ids: list[str]
+
+    @field_validator("appointment_ids")
+    @classmethod
+    def clean_ids(cls, value: list[str]) -> list[str]:
+        cleaned = [str(v).strip() for v in (value or []) if str(v).strip()]
+        if not cleaned:
+            raise ValueError("appointment_ids must contain at least one appointment id")
+        return cleaned
+
+
+# NOTE: these two static routes MUST be declared before
+# POST /no-show/{appointment_id} — otherwise FastAPI would match
+# "no-show-eligible" / "no-show-batch" as an appointment_id path parameter.
+@router.get("/no-show-eligible", status_code=status.HTTP_200_OK,
+            summary="List appointments eligible for 24h no-show prediction")
+def no_show_eligible_endpoint(
+    tolerance_minutes: Optional[int] = Query(default=None, ge=0, le=1440),
+    limit: int = Query(default=100, ge=1, le=200),
+    auth: AuthContext = Depends(require_staff_or_admin),
+):
+    """
+    Appointments scheduled at ``now + 24h`` within the configured tolerance
+    (default ±12 hours), still ``booked``.
+
+    Read-only: opening the prediction page never runs inference.
+    """
+    return {"success": True, "data": list_no_show_eligible(tolerance_minutes, limit=limit)}
+
+
+@router.post("/no-show-batch", status_code=status.HTTP_200_OK,
+             summary="Run no-show prediction for a selected batch (max 10)")
+def predict_no_show_batch_endpoint(
+    body: NoShowBatchRequest,
+    auth: AuthContext = Depends(require_staff_or_admin),
+):
+    """
+    Run the EXISTING no-show inference for the explicitly selected
+    appointments only. Enforces the maximum batch size server-side
+    (422 ``INVALID_OPERATION`` when more are selected) and re-checks that
+    every id is still eligible. There is deliberately no "predict all".
+    """
+    return {"success": True, "data": run_no_show_for_ids(body.appointment_ids)}
 
 
 # NOTE: this static route MUST be declared before

@@ -67,7 +67,7 @@ def create_staff_user_endpoint(
     full_name: str = Query(min_length=1, max_length=120),
     email: str = Query(min_length=3, max_length=255),
     phone: str | None = Query(default=None, max_length=30),
-    role: Literal["staff", "admin"] = Query(default="staff"),
+    role: Literal["staff", "doctor", "admin"] = Query(default="staff"),
     auth: AuthContext = Depends(require_admin),
 ):
     """

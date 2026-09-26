@@ -16,12 +16,13 @@ from frontend.components.ui import pagination
 from frontend.utils.session import require_role, current_user
 from frontend.utils.states import display_api_error, status_pill, format_datetime
 from frontend.api.staff_admin_services import AdminUserService
-from frontend.config import ROLE_PATIENT, ROLE_STAFF, ROLE_ADMIN
+from frontend.config import ROLE_PATIENT, ROLE_STAFF, ROLE_ADMIN, ROLE_DOCTOR
 
 ROLE_OPTIONS = {
-    "patient": "Patient",
-    "staff": "Staff",
-    "admin": "Admin",
+    ROLE_PATIENT: "Patient",
+    ROLE_STAFF: "Staff",
+    ROLE_DOCTOR: "Doctor",
+    ROLE_ADMIN: "Admin",
 }
 STATUS_OPTIONS = {
     "active": "Active",
@@ -135,10 +136,11 @@ def render_content() -> None:
 # ---------------------------------------------------------------------------
 
 def _render_create(service: AdminUserService) -> None:
+    
     section_title(
-        "Provision a Staff Account",
-        "Create a staff or administrator account. The new user signs in with an "
-        "8-digit code sent to their email — no password is set here.",
+    "Provision a Hospital Account",
+    "Create staff, doctor, or administrator accounts. The new user signs in "
+    "with an 8-digit code sent to their email — no password is set here.",
     )
 
     # Success state (persists until dismissed) with the real returned profile.
@@ -201,13 +203,18 @@ def _render_create(service: AdminUserService) -> None:
 
     role = st.selectbox(
         "Account role",
-        [ROLE_STAFF, ROLE_ADMIN],
+        [
+        ROLE_STAFF,
+        ROLE_DOCTOR,
+        ROLE_ADMIN,
+        ],
         format_func=lambda r: ROLE_OPTIONS[r],
         key="cu_role",
         help=(
-            "Staff can manage appointments, reminders, and analytics. "
-            "Admins additionally govern users, catalog, knowledge, and audit logs."
-        ),
+        "Staff manage operational workflows such as appointments, reminders, "
+        "and analytics. Doctors manage doctor-specific workflows. "
+        "Admins additionally govern users, catalog, knowledge, and audit logs."
+    ),
     )
 
     if st.button("Create Account", type="primary", width="stretch"):
@@ -262,8 +269,14 @@ def _render_list(service: AdminUserService) -> None:
     f1, f2, f3 = st.columns([1, 1, 2])
     with f1:
         role_filter = st.selectbox(
-            "Role",
-            ["All", ROLE_PATIENT, ROLE_STAFF, ROLE_ADMIN],
+    "Role",
+    [
+        "All",
+        ROLE_PATIENT,
+        ROLE_STAFF,
+        ROLE_DOCTOR,
+        ROLE_ADMIN,
+    ],
             format_func=lambda r: "All roles" if r == "All" else ROLE_OPTIONS.get(r, r),
             key="admin_users_role",
         )

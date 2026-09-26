@@ -30,6 +30,10 @@ def route_after_rag(state: AgentState):
 
 
 def route_after_details(state: AgentState):
+    # A reply that clearly starts a new supported intent leaves the pending
+    # transaction and is classified from the top.
+    if state.get("escape_intent"):
+        return _route("collect_details", "understand_intent", escape_intent=state.get("escape_intent"))
     if state.get("missing_fields"):
         return _route("collect_details", "collect_details", missing_detail=state.get("missing_fields"))
     if state.get("intent") in {
@@ -43,7 +47,13 @@ def route_after_details(state: AgentState):
 
 
 def route_after_discovery(state: AgentState):
+    if state.get("escape_intent"):
+        return _route("discover_data", "understand_intent", escape_intent=state.get("escape_intent"))
     result = state.get("tool_result", {})
+    # A discovery step only committed intermediate selections (or re-asks a
+    # menu): re-enter discovery so each interrupt runs in its own execution.
+    if result.get("continue_discovery"):
+        return _route("discover_data", "discover_data", discovery_detail=result.get("action"))
     if state.get("intent") in {"appointment_lookup", "analytics_recommendation"}:
         return _route("discover_data", "generate_response", intent=state.get("intent"))
     if not result.get("success", False):
@@ -58,7 +68,21 @@ def route_after_discovery(state: AgentState):
 
 def route_after_validation(state: AgentState):
     if state.get("validation_errors"):
-        return _route("validate_transaction", "collect_details", validation_detail=state.get("validation_errors"))
+        # A rejected value was removed from the transaction, so the workflow
+        # must ask the user for it again...
+        if state.get("invalid_fields") or state.get("missing_fields"):
+            return _route("validate_transaction", "collect_details", validation_detail=state.get("validation_errors"))
+        # ...otherwise (nothing the user can re-enter, e.g. a missing resolved
+        # slot) re-resolve against the database for appointment workflows.
+        if state.get("intent") in {
+            "appointment_booking",
+            "appointment_reschedule",
+            "appointment_cancellation",
+            "appointment_lookup",
+        }:
+            return _route("validate_transaction", "discover_data", intent=state.get("intent"))
+        # Terminal guard: never bounce between two nodes without user input.
+        return _route("validate_transaction", "generate_response", intent=state.get("intent"))
     if state.get("intent") in {
         "appointment_booking",
         "appointment_reschedule",
@@ -70,6 +94,8 @@ def route_after_validation(state: AgentState):
 
 
 def route_after_confirmation(state: AgentState):
+    if state.get("escape_intent"):
+        return _route("confirmation", "understand_intent", escape_intent=state.get("escape_intent"))
     if state.get("confirmed"):
         return _route("confirmation", "execute_tool", confirmed=True)
     return _route("confirmation", "generate_response", confirmed=False)

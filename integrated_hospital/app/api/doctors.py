@@ -49,17 +49,28 @@ def create_doctor_endpoint(
     payload: CreateDoctorRequest,
     auth: AuthContext = Depends(require_admin),
 ):
-    """Create a new doctor record (admin only)."""
-    doctor = create_doctor(
+    """Create a new doctor record (admin only), optionally with slots."""
+    result = create_doctor(
         department_id=payload.department_id,
         full_name=payload.full_name,
         specialization=payload.specialization,
         experience_years=payload.experience_years,
         status=payload.status,
+        slot_schedule=payload.slot_schedule,
         actor_id=auth.user.id,
         actor_role="admin",
     )
-    return {"success": True, "message": "Doctor created.", "data": doctor}
+
+    body: dict = {
+        "success": True,
+        "message": "Doctor created.",
+        "data": result["doctor"],
+    }
+    if result.get("slot_summary"):
+        body["slot_summary"] = result["slot_summary"]
+    if result.get("slot_warning"):
+        body["slot_warning"] = result["slot_warning"]
+    return body
 
 
 @router.patch("/{doctor_id}", status_code=status.HTTP_200_OK, summary="Update doctor")

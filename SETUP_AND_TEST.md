@@ -14,6 +14,9 @@ LLM_MODEL=your-model-name
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+# Optional — no-show scoring window / batch cap (defaults shown)
+# NOSHOW_TOLERANCE_MINUTES=720
+# NOSHOW_MAX_BATCH=10
 ```
 
 ## Installation
@@ -83,3 +86,19 @@ The e2e tests require a real patient user in the database with existing appointm
 - **Discovery flow**: department → doctor → availability (slots)
 - **Confirmation gate**: Router prevents `execute_tool` if `confirmed=False`
 - **Tool result handling**: Distinguishes discovery results from execution results
+
+## No-Show Scoring (24-hour selection flow)
+- Staff/Admin → **Forecasting → No-Show Scoring** tab lists only appointments inside
+  the `now + 24h ± NOSHOW_TOLERANCE_MINUTES` window (default `720` = ±12 h) that are
+  still `booked`.
+- `GET /api/v1/predictions/no-show-eligible` is read-only: opening the page never
+  runs inference, so the reminders/dashboard/list pages stay fast.
+- `POST /api/v1/predictions/no-show-batch` runs the existing `predict_no_show()` for
+  the explicitly selected appointments only — at most `NOSHOW_MAX_BATCH` (default 10)
+  unique ids, otherwise `422 INVALID_OPERATION`. There is deliberately no "Predict All".
+- Every selected id is re-validated server-side (exists, still `booked`, still inside
+  the window) at the moment of the click; the frontend mirrors the same cap and
+  disables **Predict Selected** when it is exceeded.
+- Each score is persisted to `prediction_logs`; the version *label* lives in
+  `prediction.model_version` because `model_version_id` is a uuid column.
+- Reminder/dashboard listings read stored scores only — they never score live.

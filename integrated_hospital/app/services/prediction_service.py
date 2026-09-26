@@ -27,9 +27,10 @@ Feature-availability policy (PROJECT CONTEXT lifecycle rules):
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone, date as date_type
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pandas as pd
 
@@ -278,23 +279,89 @@ def _num(value: Any, default: float) -> float:
         return float(default)
 
 
+def _as_uuid(value: Any) -> str | None:
+    """
+    Return ``value`` when it is a real UUID, else None.
+
+    ``prediction_logs.model_version_id`` is a uuid column (verified against
+    the live Supabase schema), while the application identifies versions by
+    LABEL (``v1.0``, ``rule_based_v1``, ``heuristic_v1``, ``unknown``). Those
+    labels made every insert fail with
+    ``400 22P02 invalid input syntax for type uuid`` — the column is nullable,
+    so we omit it when the value is not a UUID and keep the label inside the
+    json payload (``prediction`` / ``input_snapshot``) where it is readable.
+    The label is also echoed in the API response, so no information is lost.
+    """
+    if value is None:
+        return None
+    try:
+        return str(UUID(str(value)))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def _stored_model_version(row: dict[str, Any]) -> str | None:
+    """
+    Version label of a stored ``prediction_logs`` row.
+
+    The uuid column cannot hold labels (``v1.0`` …), so ``_log_prediction``
+    embeds the label in ``prediction.model_version``; that is what the no-show
+    job's idempotency check compares against. Falls back to the uuid column
+    for rows written by other paths.
+    """
+    raw = row.get("prediction")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            raw = None
+    if isinstance(raw, dict) and raw.get("model_version"):
+        return str(raw.get("model_version"))
+    value = row.get("model_version_id")
+    return str(value) if value is not None else None
+
+
+def _json_payload(value: Any) -> Any:
+    """
+    ``prediction_logs.prediction`` is a TEXT column while the application
+    builds dicts. Serialize explicitly so the stored value is a JSON string
+    the readers already parse (``reminder_service`` does ``json.loads`` when
+    the value is a str) instead of relying on PostgREST coercion.
+    """
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, default=str)
+    return value
+
+
 def _log_prediction(admin_supabase, result: dict[str, Any], features: dict[str, Any]) -> None:
-    """Persist an inference event to prediction_logs (best-effort)."""
+    """
+    Persist an inference event to prediction_logs (best-effort).
+
+    The version LABEL (``v1.0`` …) is stored inside ``prediction.model_version``
+    because ``model_version_id`` is a uuid column that cannot hold labels; the
+    no-show job's idempotency check reads it back from there.
+    """
     try:
         pred_id = result.get("prediction_id") or str(uuid4())
         result["prediction_id"] = pred_id
-        admin_supabase.table("prediction_logs").insert({
+
+        prediction = result.get("prediction")
+        if isinstance(prediction, dict) and "model_version" not in prediction:
+            prediction = {**prediction, "model_version": result.get("model_version_id")}
+
+        payload = {
             "prediction_id": pred_id,
-            "model_version_id": result.get("model_version_id", "unknown"),
+            "model_version_id": _as_uuid(result.get("model_version_id")),
             "prediction_type": result.get("prediction_type", "unknown"),
             "entity_type": result.get("entity_type", "appointment"),
             "entity_id": result.get("entity_id"),
             "input_snapshot": features,
-            "prediction": result.get("prediction"),
+            "prediction": _json_payload(prediction),
             "confidence": result.get("confidence"),
             "prediction_status": result.get("prediction_status", "failed"),
             "predicted_at": result.get("predicted_at"),
-        }).execute()
+        }
+        admin_supabase.table("prediction_logs").insert(payload).execute()
     except Exception as exc:
         if not globals().get("_mc_pred_log_warned"):
             globals()["_mc_pred_log_warned"] = True
@@ -804,6 +871,305 @@ def build_patient_flow_features(department_name: str, target: date_type) -> tupl
 
     missing = _resolve_missing(features, PATIENT_FLOW_NUMERIC_FEATURES)
     return features, missing
+
+
+# ---------------------------------------------------------------------------
+# No-show scoring window (scheduled_start ≈ now + 24h ± tolerance) and the
+# capped, explicitly user-triggered prediction batch (selection flow)
+# ---------------------------------------------------------------------------
+
+# Deliberately NOT select("*"): the appointments table carries 65 columns and
+# this is the query the prediction page runs on every open.
+NO_SHOW_ELIGIBLE_COLUMNS = (
+    "appointment_id, patient_id, doctor_id, department_id, department_name, "
+    "scheduled_start, appointment_status, appointment_type, booking_channel"
+)
+
+
+def _parse_iso(value: Any) -> datetime | None:
+    """ISO-8601 -> aware datetime (naive values treated as UTC)."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def no_show_window(
+    tolerance_minutes: int | None = None,
+    *,
+    now: datetime | None = None,
+) -> tuple[datetime, datetime, datetime, int]:
+    """
+    (window_start, window_end, target_time, tolerance_minutes) for 24-hour
+    no-show prediction.
+
+    ``target_time = now + 24h`` and the window is ``target ± tolerance``
+    (config ``NOSHOW_TOLERANCE_MINUTES``, default 720 minutes / 12h).
+    """
+    settings = get_settings()
+    if tolerance_minutes is None:
+        tolerance = int(settings.noshow_tolerance_minutes)
+    else:
+        tolerance = int(tolerance_minutes)
+    tolerance = max(0, tolerance)
+    current = now or datetime.now(timezone.utc)
+    target = current + timedelta(hours=24)
+    return target - timedelta(minutes=tolerance), target + timedelta(minutes=tolerance), target, tolerance
+
+
+def _is_no_show_eligible(
+    appointment: dict[str, Any],
+    window_start: datetime,
+    window_end: datetime,
+) -> bool:
+    """Pre-outcome eligibility: still 'booked' and inside the 24h window."""
+    if str(appointment.get("appointment_status") or "").lower() != "booked":
+        return False
+    scheduled = _parse_iso(appointment.get("scheduled_start"))
+    return scheduled is not None and window_start <= scheduled <= window_end
+
+
+def _attach_stored_no_show_state(
+    admin_supabase,
+    appointments: list[dict[str, Any]],
+) -> None:
+    """
+    Attach the LATEST successful stored no-show prediction and the current
+    reminder state to each appointment — read-only, NEVER runs inference.
+
+    This lets the Reminders table show what is already known (probability or
+    rule-based risk score, risk level, predicted label, last-scored time,
+    reminder state) BEFORE staff press "Predict Selected". Appointments that
+    have never been scored simply report ``None`` for every prediction field
+    so the UI can say "Not scored yet" instead of inventing a value.
+    """
+    ids = [a.get("appointment_id") for a in appointments if a.get("appointment_id")]
+    if not ids:
+        return
+
+    # Latest successful stored prediction per appointment.
+    stored_prediction: dict[str, dict[str, Any]] = {}
+    try:
+        log_res = (
+            admin_supabase.table("prediction_logs")
+            .select("entity_id, predicted_at, prediction")
+            .eq("prediction_type", "no_show")
+            .eq("prediction_status", "success")
+            .in_("entity_id", ids)
+            .execute()
+        )
+        for entry in log_res.data or []:
+            appt_id = entry.get("entity_id")
+            if not appt_id:
+                continue
+            previous = stored_prediction.get(appt_id)
+            if previous is None or str(entry.get("predicted_at") or "") > str(previous.get("predicted_at") or ""):
+                stored_prediction[appt_id] = entry
+    except Exception:
+        stored_prediction = {}
+
+    # Latest reminder row per appointment (real reminder state).
+    reminder_by_appointment: dict[str, dict[str, Any]] = {}
+    try:
+        rem_res = (
+            admin_supabase.table("reminders")
+            .select("appointment_id, reminder_type, sent_at, created_at")
+            .in_("appointment_id", ids)
+            .order("created_at", desc=True)
+            .limit(500)
+            .execute()
+        )
+        for rem in rem_res.data or []:
+            appt_id = rem.get("appointment_id")
+            if appt_id and appt_id not in reminder_by_appointment:
+                reminder_by_appointment[appt_id] = rem
+    except Exception:
+        reminder_by_appointment = {}
+
+    for appointment in appointments:
+        appt_id = appointment.get("appointment_id")
+        entry = stored_prediction.get(appt_id)
+
+        prediction: Any = entry.get("prediction") if entry else None
+        if isinstance(prediction, str):
+            try:
+                prediction = json.loads(prediction)
+            except (TypeError, ValueError):
+                prediction = None
+        if not isinstance(prediction, dict):
+            prediction = None
+
+        appointment["stored_prediction"] = prediction
+        if prediction is None:
+            appointment["no_show_probability"] = None
+            appointment["risk_level"] = None
+            appointment["predicted_no_show"] = None
+            appointment["last_scored_at"] = None
+        else:
+            # Rule-based rows carry ``risk_score`` only — ``.get`` leaves the
+            # probability None rather than fabricating a percentage.
+            appointment["no_show_probability"] = prediction.get("no_show_probability")
+            appointment["risk_level"] = prediction.get("risk_level")
+            appointment["predicted_no_show"] = prediction.get("no_show")
+            appointment["last_scored_at"] = entry.get("predicted_at") if entry else None
+
+        reminder = reminder_by_appointment.get(appt_id) or {}
+        appointment["reminder_id"] = reminder.get("reminder_id")
+        appointment["reminder_type"] = reminder.get("reminder_type")
+        appointment["reminder_sent_at"] = reminder.get("sent_at") or reminder.get("created_at")
+        appointment["reminder_sent"] = bool(reminder)
+
+
+def list_no_show_eligible(
+    tolerance_minutes: int | None = None,
+    *,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """
+    Appointments eligible for no-show prediction RIGHT NOW:
+    ``appointment_status = 'booked'`` and ``scheduled_start`` inside
+    ``[now + 24h - tolerance, now + 24h + tolerance]``.
+
+    Read-only by contract: NO inference runs here, so opening the Reminders
+    page costs one bounded window query, three name lookups and two small
+    state lookups (stored predictions + reminders) — independent of how many
+    appointments the table holds.
+    """
+    from app.services.staff_appointment_service import _enrich_appointments
+
+    admin_supabase = get_supabase_admin_client()
+    window_start, window_end, target, tolerance = no_show_window(tolerance_minutes)
+
+    rows = (
+        admin_supabase.table("appointments")
+        .select(NO_SHOW_ELIGIBLE_COLUMNS)
+        .eq("appointment_status", "booked")
+        .gte("scheduled_start", window_start.isoformat())
+        .lte("scheduled_start", window_end.isoformat())
+        .order("scheduled_start")
+        .limit(max(1, int(limit)))
+        .execute()
+    )
+    appointments = _enrich_appointments(admin_supabase, rows.data or [])
+    _attach_stored_no_show_state(admin_supabase, appointments)
+
+    return {
+        "target_time": target.isoformat(),
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
+        "tolerance_minutes": tolerance,
+        "max_batch": max(1, int(get_settings().noshow_max_batch)),
+        "appointments": appointments,
+        "total": len(appointments),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def run_no_show_for_ids(appointment_ids: list[str]) -> dict[str, Any]:
+    """
+    Run the EXISTING no-show inference for an explicit, capped selection.
+
+    Enforced here (authoritative — the frontend mirrors these rules):
+      * 1 .. ``NOSHOW_MAX_BATCH`` (default 10) UNIQUE ids per action;
+      * every id must exist, still be ``booked`` and still sit inside the
+        24h ± tolerance window at the moment of the click.
+
+    Nothing runs on page load; only this call performs inference.
+    """
+    from app.utils.exceptions import InvalidOperationError
+
+    settings = get_settings()
+    max_batch = max(1, int(settings.noshow_max_batch))
+
+    ids = list(dict.fromkeys(
+        str(a).strip() for a in (appointment_ids or []) if str(a).strip()
+    ))
+    if not ids:
+        raise InvalidOperationError(
+            "No appointments selected. Select at least one appointment to predict."
+        )
+    if len(ids) > max_batch:
+        raise InvalidOperationError(
+            f"A maximum of {max_batch} appointments can be predicted at once. "
+            f"You selected {len(ids)}. Deselect {len(ids) - max_batch} "
+            "appointment(s) and try again."
+        )
+
+    admin_supabase = get_supabase_admin_client()
+    window_start, window_end, _target, _tolerance = no_show_window()
+
+    selected = (
+        admin_supabase.table("appointments")
+        .select("appointment_id, scheduled_start, appointment_status, department_name")
+        .in_("appointment_id", ids)
+        .execute()
+    )
+    found = {r.get("appointment_id"): r for r in (selected.data or [])}
+
+    missing = [i for i in ids if i not in found]
+    if missing:
+        raise InvalidOperationError(
+            "Selected appointment(s) no longer exist: " + ", ".join(missing[:5])
+        )
+
+    ineligible = [i for i in ids if not _is_no_show_eligible(found[i], window_start, window_end)]
+    if ineligible:
+        raise InvalidOperationError(
+            "These appointments are no longer eligible for 24-hour no-show "
+            "prediction (they must still be 'booked' and fall inside the "
+            f"{window_start.isoformat()} – {window_end.isoformat()} window). "
+            f"Refresh the list. Affected: {', '.join(ineligible[:5])}"
+        )
+
+    executed: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    predicted_at = datetime.now(timezone.utc).isoformat()
+
+    for appointment_id in ids:
+        try:
+            result = predict_no_show(appointment_id)
+        except Exception as exc:
+            log_error(f"Batch no-show prediction failed for {appointment_id}",
+                      exception_type=type(exc).__name__)
+            failed.append({"appointment_id": appointment_id, "error": str(exc)})
+            continue
+
+        if result.get("prediction_status") == "failed":
+            failed.append({
+                "appointment_id": appointment_id,
+                "error": result.get("error_message") or "Prediction failed",
+            })
+            continue
+
+        item = dict(found[appointment_id])
+        item["prediction"] = result.get("prediction")
+        item["prediction_status"] = result.get("prediction_status")
+        item["model_version_id"] = result.get("model_version_id")
+        item["prediction_id"] = result.get("prediction_id")
+        item["predicted_at"] = result.get("predicted_at")
+        executed.append(item)
+
+    log_info(
+        "No-show prediction batch completed",
+        requested=len(ids),
+        executed=len(executed),
+        failed=len(failed),
+    )
+
+    return {
+        "executed": executed,
+        "failed": failed,
+        "requested": len(ids),
+        "max_batch": max_batch,
+        "window_start": window_start.isoformat(),
+        "window_end": window_end.isoformat(),
+        "predicted_at": predicted_at,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1474,14 +1840,14 @@ def run_no_show_prediction_job() -> dict[str, Any]:
     try:
         logs_res = (
             admin_supabase.table("prediction_logs")
-            .select("entity_id, predicted_at, model_version_id, prediction_status")
+            .select("entity_id, predicted_at, model_version_id, prediction_status, prediction")
             .eq("prediction_type", "no_show")
             .in_("entity_id", eligible_ids)
             .execute()
         )
         for row in logs_res.data or []:
             if (row.get("prediction_status") == "success"
-                    and row.get("model_version_id") == model_version):
+                    and _stored_model_version(row) == model_version):
                 try:
                     predicted_at = datetime.fromisoformat(
                         str(row.get("predicted_at")).replace("Z", "+00:00"))

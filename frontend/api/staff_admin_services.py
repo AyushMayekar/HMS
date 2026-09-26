@@ -258,8 +258,13 @@ class DoctorAdminService:
         specialization: str,
         experience_years: int,
         status: str = "active",
+        slot_schedule: Optional[dict] = None,
     ) -> APIResponse:
-        """Create a doctor."""
+        """Create a doctor, optionally generating its bookable slots.
+
+        ``slot_schedule`` is only sent when supplied, so requests without it
+        behave exactly as before this option existed.
+        """
         payload = {
             "department_id": department_id,
             "full_name": full_name,
@@ -267,6 +272,8 @@ class DoctorAdminService:
             "experience_years": experience_years,
             "status": status,
         }
+        if slot_schedule is not None:
+            payload["slot_schedule"] = slot_schedule
         return self.client.post(DOCTORS_CREATE, json_data=payload)
 
     def update(

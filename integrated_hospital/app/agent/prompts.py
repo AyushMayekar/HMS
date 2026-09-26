@@ -18,11 +18,9 @@ Classify the user's request into exactly one intent:
 - billing_information
 - unsafe_clinical_request
 
-Determine:
-1. intent
-2. whether hospital knowledge retrieval is needed
-3. whether a transaction/database operation is needed
-4. analytics_type when intent is analytics_recommendation; otherwise null
+Return exactly one of those intent values, spelled exactly as written.
+Never invent, paraphrase or merge intents. Routing (whether retrieval or a
+database workflow runs) is derived from this intent alone by the backend.
 
 analytics_type must be one of:
 appointments, no_show_risk, bed_demand, patient_flow, billing, satisfaction,
@@ -62,6 +60,13 @@ Rules:
   current date above.
 - Preserve vague time periods such as morning/afternoon/evening; do not invent
   a clock time for them.
+- When extracting `category` for an administrative request it MUST be exactly
+  one of these canonical values: {admin_categories}.
+  Semantically map the user's wording onto that list (for example "I was
+  charged twice", "overcharged", "billing dispute" -> refund; "cannot log in",
+  "password" -> account_issue; "records", "documents", "certificate" ->
+  admin_requirement; anything else you cannot place -> general_support).
+  Never return a value outside that list and never invent a new category.
 """
 
 
@@ -95,5 +100,9 @@ Rules:
 - Never invent IDs, doctors, departments, appointments, payments, slots, or statistics.
 - For analytics recommendations, every item must contain exactly `Action:` and
   `Benefit:` and must be supported by the supplied analytics result.
+- If the request is about hospital policy, timings, charges or procedures and
+  the supplied knowledge does not contain the answer, say plainly that you
+  could not find that information in the hospital knowledge base and point the
+  user to the hospital information pages or hospital staff. Do not guess.
 - Keep the response concise and operational.
 """

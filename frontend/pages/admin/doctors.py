@@ -6,6 +6,8 @@ standardized success/error feedback, and Material markdown icons — no emoji.
 """
 from __future__ import annotations
 
+from datetime import date, time, timedelta
+
 import streamlit as st
 
 from frontend.components.navbar import page_head, section_title, breadcrumb, empty_state
@@ -17,8 +19,28 @@ from frontend.api.staff_admin_services import DoctorAdminService, DepartmentAdmi
 STATUS_OPTIONS = {"active": "Active", "inactive": "Inactive"}
 
 CREATE_FLASH_KEY = "doctor_create_flash"
+CREATE_WARNING_KEY = "doctor_create_warning"
 EDIT_FLASH_KEY = "doctor_edit_flash"
 ATTEMPT_KEY = "doctor_create_attempted"
+
+# Widget keys cleared after a successful create, so the schedule resets to
+# today's date and the documented defaults instead of going stale.
+CREATE_FIELD_KEYS = (
+    "doc_new_name",
+    "doc_new_spec",
+    "doc_new_slots",
+    "doc_new_slot_date",
+    "doc_new_slot_days",
+    "doc_new_slot_len",
+    "doc_new_slot_cap",
+    "doc_new_slot_open",
+    "doc_new_slot_close",
+    "doc_new_slot_bs",
+    "doc_new_slot_be",
+)
+
+# Clinic hours / break are edited in 15-minute steps (09:00, 13:00, …).
+TIME_STEP = timedelta(minutes=15)
 
 
 def _required_error(value: str, required: bool, label: str, min_len: int = 1) -> str | None:
@@ -39,6 +61,76 @@ def _show_flash(key: str) -> None:
     if st.button("Dismiss", key=f"{key}_dismiss"):
         st.session_state.pop(key, None)
         st.rerun()
+
+
+def _show_warning(key: str) -> None:
+    """Persistent warning message (e.g. doctor saved but slots failed)."""
+    message = st.session_state.get(key)
+    if not message:
+        return
+    st.warning(message)
+    if st.button("Dismiss", key=f"{key}_dismiss"):
+        st.session_state.pop(key, None)
+        st.rerun()
+
+
+def _fmt_date(value) -> str:
+    """Format an ISO date for the success message, tolerating anything else."""
+    try:
+        return date.fromisoformat(str(value)).strftime("%d %b %Y")
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _minutes(value: time) -> int:
+    return value.hour * 60 + value.minute
+
+
+def _schedule_error(
+    *,
+    start_date: date,
+    days: int,
+    open_time: time,
+    close_time: time,
+    break_start: time,
+    break_end: time,
+    slot_minutes: int,
+) -> str | None:
+    """Client-side mirror of the backend schedule rules.
+
+    The API answers 422 with a generic validation message, so the exact reason
+    is reproduced here instead of letting the admin guess.
+    """
+    if start_date < date.today():
+        return "The first slot date cannot be in the past."
+
+    if open_time >= close_time:
+        return "Clinic closes must be later than clinic opens."
+
+    if not (open_time < break_start < break_end < close_time):
+        return "The break must sit strictly between the clinic open and close times."
+
+    windows = [
+        (open_time, break_start, "morning"),
+        (break_end, close_time, "afternoon"),
+    ]
+    for window_start, window_end, label in windows:
+        span = _minutes(window_end) - _minutes(window_start)
+        if span % slot_minutes:
+            return (
+                f"The {label} window {window_start.strftime('%H:%M')}–{window_end.strftime('%H:%M')} "
+                f"({span} minutes) does not divide evenly into {slot_minutes}-minute slots. "
+                "Adjust the hours, break or slot length."
+            )
+
+    last_day = start_date + timedelta(days=int(days) - 1)
+    if last_day > date.today() + timedelta(days=29):
+        return (
+            "Slots must fit inside the 30-day booking window — "
+            "reduce the number of days or pick an earlier start date."
+        )
+
+    return None
 
 
 def render():
@@ -81,10 +173,11 @@ def render_content() -> None:
         )
 
         _show_flash(CREATE_FLASH_KEY)
+        _show_warning(CREATE_WARNING_KEY)
 
         # One-shot field reset, applied before the widgets are instantiated.
         if st.session_state.pop("_doc_clear_fields", False):
-            for widget_key in ("doc_new_name", "doc_new_spec"):
+            for widget_key in CREATE_FIELD_KEYS:
                 st.session_state.pop(widget_key, None)
 
         attempted = bool(st.session_state.get(ATTEMPT_KEY, False))
@@ -138,6 +231,100 @@ def render_content() -> None:
                 key="doc_new_status",
             )
 
+        # ---------- Optional slot schedule ----------
+        schedule_err = None
+        generate_slots = st.checkbox(
+            "Generate bookable slots for this doctor",
+            value=True,
+            key="doc_new_slots",
+            help=(
+                "Creates bookable availability slots so patients can book this "
+                "doctor right away. Uncheck to create the doctor without slots."
+            ),
+        )
+
+        if generate_slots:
+            sc1, sc2, sc3 = st.columns(3)
+            with sc1:
+                slot_start = st.date_input(
+                    "First slot date",
+                    value=date.today(),
+                    min_value=date.today(),
+                    key="doc_new_slot_date",
+                    help="Must stay inside the 30-day booking window.",
+                )
+                slot_days = st.number_input(
+                    "Days to generate",
+                    min_value=1,
+                    max_value=30,
+                    value=7,
+                    step=1,
+                    key="doc_new_slot_days",
+                )
+            with sc2:
+                slot_minutes = st.selectbox(
+                    "Slot length (minutes)",
+                    [15, 30, 60],
+                    index=1,
+                    key="doc_new_slot_len",
+                )
+                slot_capacity = st.number_input(
+                    "Patients per slot",
+                    min_value=1,
+                    max_value=50,
+                    value=1,
+                    step=1,
+                    key="doc_new_slot_cap",
+                )
+            with sc3:
+                clinic_open = st.time_input(
+                    "Clinic opens",
+                    value=time(9, 0),
+                    step=TIME_STEP,
+                    key="doc_new_slot_open",
+                )
+                clinic_close = st.time_input(
+                    "Clinic closes",
+                    value=time(17, 0),
+                    step=TIME_STEP,
+                    key="doc_new_slot_close",
+                )
+
+            bc1, bc2 = st.columns(2)
+            with bc1:
+                break_start = st.time_input(
+                    "Break starts",
+                    value=time(13, 0),
+                    step=TIME_STEP,
+                    key="doc_new_slot_bs",
+                )
+            with bc2:
+                break_end = st.time_input(
+                    "Break ends",
+                    value=time(14, 0),
+                    step=TIME_STEP,
+                    key="doc_new_slot_be",
+                )
+
+            st.caption(
+                f"Preview: {int(slot_days)} day(s), "
+                f"{int(slot_minutes)}-minute slots, "
+                f"{clinic_open.strftime('%H:%M')}–{clinic_close.strftime('%H:%M')} "
+                f"with a {break_start.strftime('%H:%M')}–{break_end.strftime('%H:%M')} break."
+            )
+
+            schedule_err = _schedule_error(
+                start_date=slot_start,
+                days=int(slot_days),
+                open_time=clinic_open,
+                close_time=clinic_close,
+                break_start=break_start,
+                break_end=break_end,
+                slot_minutes=int(slot_minutes),
+            )
+            if schedule_err:
+                st.error(schedule_err)
+
         if st.button("Create Doctor", type="primary", width="stretch"):
             if not dept_names:
                 st.error("Create a department before adding doctors.")
@@ -147,10 +334,24 @@ def render_content() -> None:
                     (
                         _required_error(full_name, True, "Full name", min_len=2),
                         _required_error(specialization, True, "Specialization", min_len=3),
+                        schedule_err,
                     )
                 ):
                     # Rerun so the inline messages next to each field appear immediately.
                     st.rerun()
+
+                slot_schedule = None
+                if generate_slots:
+                    slot_schedule = {
+                        "start_date": slot_start.isoformat(),
+                        "days": int(slot_days),
+                        "start_time": clinic_open.strftime("%H:%M:%S"),
+                        "end_time": clinic_close.strftime("%H:%M:%S"),
+                        "break_start": break_start.strftime("%H:%M:%S"),
+                        "break_end": break_end.strftime("%H:%M:%S"),
+                        "slot_minutes": int(slot_minutes),
+                        "slot_capacity": int(slot_capacity),
+                    }
 
                 with st.spinner("Creating doctor…"):
                     result = doctor_service.create(
@@ -159,11 +360,26 @@ def render_content() -> None:
                         specialization=specialization.strip(),
                         experience_years=int(experience_years),
                         status=status,
+                        slot_schedule=slot_schedule,
                     )
                 if result.success:
-                    st.session_state[CREATE_FLASH_KEY] = (
-                        f"Dr. {full_name.strip()} added to {dept_pick}."
-                    )
+                    raw = result.raw if isinstance(result.raw, dict) else {}
+                    summary = raw.get("slot_summary") or {}
+                    message = f"Dr. {full_name.strip()} added to {dept_pick}."
+                    if summary.get("created"):
+                        message += f" {summary['created']} slots created"
+                        if summary.get("start_date"):
+                            message += (
+                                f" ({_fmt_date(summary['start_date'])}"
+                                f" – {_fmt_date(summary['end_date'])})"
+                            )
+                        message += "."
+                    if summary.get("skipped"):
+                        message += f" {summary['skipped']} existing slot(s) left untouched."
+
+                    st.session_state[CREATE_FLASH_KEY] = message
+                    if raw.get("slot_warning"):
+                        st.session_state[CREATE_WARNING_KEY] = raw["slot_warning"]
                     st.session_state[ATTEMPT_KEY] = False
                     st.session_state["_doc_clear_fields"] = True
                     st.rerun()

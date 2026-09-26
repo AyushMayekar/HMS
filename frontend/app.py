@@ -151,7 +151,7 @@ if role == "patient":
         p_profile,
     ]
 elif role == "staff":
-    role_nav = [s_dashboard, s_appointments, s_analytics, s_predictions]
+    role_nav = [s_dashboard, s_appointments, s_reminders, s_analytics, s_predictions]
 elif role == "doctor":
     role_nav = [d_dashboard, d_appointments]
 elif role == "admin":

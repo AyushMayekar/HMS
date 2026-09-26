@@ -97,26 +97,30 @@ def texts(app):
 
 
 def main():
-    # ---------- Staff: reminders panel inside the unified dashboard ----------
+    # ---------- Staff: ONE reminder workflow, on the Reminders page ----------
     s = app_for("staff")
     check("staff app boots", not no_exc(s), str(no_exc(s)))
     goto(s, "pages/staff/dashboard.py")
     check("staff unified dashboard renders", not no_exc(s), str(no_exc(s)))
-    opened = False
-    for b in s.button:
-        if b.label == "Open reminder actions":
-            b.click()
-            s.run()
-            opened = True
-            break
-    check("staff dashboard reminder panel opens", opened and not no_exc(s), str(no_exc(s)))
+    check("staff dashboard has no duplicate reminder panel",
+          not any(b.label == "Open reminder actions" for b in s.button),
+          f"buttons={[b.label for b in s.button]}")
     check("staff dashboard shows department grouping", "visit(s) in this department" in texts(s) or "No appointments" in texts(s))
 
     goto(s, "pages/staff/appointments.py")
     check("staff appointments renders with pagination", not no_exc(s) and "Showing" in texts(s), str(no_exc(s)))
 
+    goto(s, "pages/staff/reminders.py")
+    check("staff reminders page renders", not no_exc(s), str(no_exc(s)))
+    check("staff reminders is the single prediction surface",
+          sum(1 for b in s.button if b.label == "Predict Selected") == 1,
+          f"buttons={[b.label for b in s.button]}")
+
     goto(s, "pages/staff/predictions.py")
     check("staff predictions renders", not no_exc(s), str(no_exc(s)))
+    check("forecasting no longer hosts no-show scoring",
+          not any(t.label == "No-Show Scoring" for t in s.tabs),
+          f"tabs={[t.label for t in s.tabs]}")
 
     # ---------- Admin: merged management + audit logs ----------
     a = app_for("admin")
